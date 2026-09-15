@@ -1,0 +1,42 @@
+services:
+    db:
+        image: mysql:8.0
+        container_name: E-Math-mysql
+        environment:
+            MYSQL_ROOT_PASSWORD: ${DB_ROOTPASSWORD}
+            MYSQL_DATABASE: ${DB_NAME}
+            MYSQL_USER: ${DB_USER}
+            MYSQL_PASSWORD: ${DB_PASSWORD}
+        ports:
+            - '3306:3306'
+        volumes:
+            - mariadb_data:/var/lib/mysql
+        command: >
+            mysqld
+            --innodb-buffer-pool-size=256M
+            --max-connections=50
+            --character-set-server=utf8mb4
+            --collation-server=utf8mb4_general_ci
+        mem_limit: 512m
+        networks:
+            - E-Math
+
+    redis:
+        image: redis:7-alpine
+        container_name: E-Math-redis
+        ports:
+            - '6379:6379'
+        volumes:
+            - redis_data:/data
+        command: redis-server --maxmemory 128mb --maxmemory-policy noeviction
+        mem_limit: 256m
+        networks:
+            - E-Math
+
+volumes:
+    mariadb_data:
+    redis_data:
+
+networks:
+    E-Math:
+        driver: bridge
