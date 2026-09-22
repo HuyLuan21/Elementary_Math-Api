@@ -3,92 +3,45 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
     async up(queryInterface, Sequelize) {
-        /**
-         * Add altering commands here.
-         *
-         * Example:
-         * await queryInterface.createTable('users', { id: Sequelize.INTEGER });
-         */
-
         await queryInterface.createTable('users', {
             id: {
                 type: Sequelize.UUID,
                 primaryKey: true,
                 allowNull: false,
             },
-            first_name: {
-                type: Sequelize.STRING,
-                allowNull: false,
-                defaultValue: '',
-            },
-            last_name: {
-                type: Sequelize.STRING,
-                allowNull: false,
-                defaultValue: '',
-            },
-            nickname: {
-                type: Sequelize.STRING,
-                allowNull: false,
-                defaultValue: '',
-                unique: true,
-            },
             email: {
-                type: Sequelize.STRING,
+                type: Sequelize.STRING(255),
                 allowNull: false,
                 unique: true,
-                validate: {
-                    isEmail: true,
-                },
             },
-            avatar_path: {
-                type: Sequelize.STRING,
+            password_hash: {
+                type: Sequelize.STRING(255),
+                allowNull: false,
+            },
+            full_name: {
+                type: Sequelize.STRING(120),
                 allowNull: true,
                 defaultValue: null,
             },
-            password: {
-                type: Sequelize.TEXT,
-                allowNull: false,
-                defaultValue: '',
-            },
             role: {
-                type: Sequelize.ENUM('admin', 'user'),
+                type: Sequelize.ENUM('parent', 'admin'),
                 allowNull: false,
-                defaultValue: 'user',
+                defaultValue: 'parent',
             },
-            is_active: {
-                type: Sequelize.BOOLEAN,
+            status: {
+                type: Sequelize.ENUM('active', 'locked'),
                 allowNull: false,
-                defaultValue: true,
+                defaultValue: 'active',
             },
-            is_blocked: {
+            pin_enabled: {
                 type: Sequelize.BOOLEAN,
                 allowNull: false,
                 defaultValue: false,
             },
-            blocked_at: {
-                type: Sequelize.DATE,
+
+            pin_hash: {
+                type: Sequelize.STRING(60),
                 allowNull: true,
-                defaultValue: null,
-            },
-            blocked_by: {
-                type: Sequelize.UUID,
-                allowNull: true,
-                defaultValue: null,
-                references: {
-                    model: 'users',
-                    key: 'id',
-                },
-                onDelete: 'SET NULL',
-                onUpdate: 'CASCADE',
-            },
-            blocked_reason: {
-                type: Sequelize.TEXT,
-                allowNull: true,
-                defaultValue: null,
-            },
-            sign_in_provider: {
-                type: Sequelize.ENUM('email', 'google.com', 'github.com'),
-                allowNull: false,
             },
             created_at: {
                 type: Sequelize.DATE,
@@ -104,12 +57,6 @@ module.exports = {
     },
 
     async down(queryInterface, Sequelize) {
-        /**
-         * Add reverting commands here.
-         *
-         * Example:
-         * await queryInterface.dropTable('users');
-         */
         await queryInterface.dropTable('users')
     },
 }

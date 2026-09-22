@@ -59,16 +59,9 @@ class AuthServices {
         try {
             const passwordHashed = await hashValue(password)
 
-            const emailName = email.split('@')[0]
-
             const splitName = full_name.trim().split(' ')
-
             const firstName = splitName.length === 1 ? '' : splitName.slice(0, splitName.length - 1).join(' ')
             const lastName = splitName.slice(splitName.length - 1).join(' ')
-
-            const lastNickname = await this.getLastNickname(emailName)
-
-            const nickname = lastNickname !== null ? `${emailName}${Number(lastNickname) + 1}` : emailName
 
             const [user, created]: [User, boolean] = await User.unscoped().findOrCreate<any>({
                 where: {
@@ -76,33 +69,28 @@ class AuthServices {
                 },
                 defaults: {
                     email,
-                    uuid: uuidv4(),
-                    password: passwordHashed,
+                    password_hash: passwordHashed,
+                    full_name,
                     first_name: firstName,
                     last_name: lastName,
-                    avatar: '',
-                    is_active: false,
-                    nickname,
-                    sign_in_provider: 'email',
+                    role: 'parent',
+                    status: 'active',
                 },
             })
 
             if (!created) {
-                const isPasswordValid = bcrypt.compareSync(password, user.get('password')!)
+                const isPasswordValid = bcrypt.compareSync(password, user.get('password_hash')!)
 
                 if (!user.is_active && isPasswordValid) {
-                    // send email to user to activate account
                     await this.sendVerifyCode({ email, type: 'activate_account' })
                 } else {
                     throw new ConflictError({ message: 'Tài khoản đã tồn tại' })
                 }
-            } else {
-                await this.sendVerifyCode({ email, type: 'activate_account' })
             }
 
             const auth_challenge_id = await this.createAuthChallengeId({ payload: { email: user.get('email')! } })
 
-            delete user.dataValues.password
+            delete user.dataValues.password_hash
             delete user.dataValues.email
 
             return { user, auth_challenge_id }
@@ -123,7 +111,7 @@ class AuthServices {
                 throw new UnauthorizedError({ message: 'Email hoặc mật khẩu không chính xác' })
             }
 
-            const isPasswordValid = bcrypt.compareSync(password, user.get('password')!)
+            const isPasswordValid = bcrypt.compareSync(password, user.get('password_hash')!)
 
             if (!isPasswordValid) {
                 throw new UnauthorizedError({ message: 'Email hoặc mật khẩu không chính xác' })
@@ -144,7 +132,7 @@ class AuthServices {
                 return { user, auth_challenge_id, token, refreshToken }
             }
 
-            delete user.dataValues.password
+            delete user.dataValues.password_hash
             delete user.dataValues.email
 
             return { token, refreshToken, user }
@@ -197,6 +185,10 @@ class AuthServices {
 
     loginWithToken = async ({ token }: { token: string }) => {
         try {
+            if (!admin.apps.length) {
+                throw new BadRequestError({ message: 'Firebase service chưa được cấu hình trên server' })
+            }
+
             const decodedToken = await admin.auth().verifyIdToken(token)
 
             const {
@@ -218,7 +210,7 @@ class AuthServices {
                 throw new BadRequestError({ message: 'Không thể lấy email từ firebase' })
             }
 
-            let hasUser = await User.scope('withEmail').findOne({
+            let hasUser = await User.findOne({
                 where: {
                     email,
                 },
@@ -379,7 +371,7 @@ class AuthServices {
             // Update password
             const passwordHashed = await hashValue(password)
 
-            await User.update({ password: passwordHashed }, { where: { email } })
+            await User.update({ password_hash: passwordHashed }, { where: { email } })
 
             await redisClient.del(`${RedisKey.FORGOT_PASSWORD_TOKEN}${email}`)
         } catch (error: any) {

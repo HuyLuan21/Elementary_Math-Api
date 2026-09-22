@@ -6,6 +6,8 @@ import errorHandler from '~/app/errors/errorHandler'
 import setUserContextMiddleware from '~/app/middlewares/userContext'
 
 const route = (app: Express) => {
+    app.use(setUserContextMiddleware)
+
     app.use('/api/auth', authRoute)
     app.use('/api/me', meRoute)
 
@@ -15,8 +17,6 @@ const route = (app: Express) => {
             message: `Can't find ${req.originalUrl} on this server!`,
         })
     })
-
-    app.use(setUserContextMiddleware)
 
     app.use(errorHandler)
 }

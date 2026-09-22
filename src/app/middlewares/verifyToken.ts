@@ -8,7 +8,16 @@ import { IRequest } from '~/type'
 
 const verifyToken = async (req: IRequest, res: any, next: NextFunction) => {
     try {
-        const { access_token } = req.cookies
+        const authHeader = req.headers.authorization
+        const access_token =
+            req.cookies?.access_token || (authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : authHeader)
+
+        if (!access_token) {
+            return res.status(401).json({
+                message: 'Failed to authenticate because token was not provided.',
+                status: 401,
+            })
+        }
 
         const tokenInvalid = await redisClient.get(`blacklist-${access_token}`)
 

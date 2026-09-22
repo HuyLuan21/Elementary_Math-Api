@@ -3,7 +3,7 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
     async up(queryInterface, Sequelize) {
-        await queryInterface.createTable('refresh_tokens', {
+        await queryInterface.createTable('profiles', {
             id: {
                 type: Sequelize.UUID,
                 primaryKey: true,
@@ -17,11 +17,32 @@ module.exports = {
                     key: 'id',
                 },
                 onDelete: 'CASCADE',
-                onUpdate: 'CASCADE',
             },
-            refresh_token: {
-                type: Sequelize.STRING(512),
+            display_name: {
+                type: Sequelize.STRING(80),
                 allowNull: false,
+            },
+            avatar_url: {
+                type: Sequelize.STRING(500),
+                allowNull: true,
+            },
+            birth_date: {
+                type: Sequelize.DATEONLY,
+                allowNull: true,
+            },
+            grade: {
+                type: Sequelize.TINYINT.UNSIGNED,
+                allowNull: true,
+            },
+            total_stars: {
+                type: Sequelize.INTEGER.UNSIGNED,
+                allowNull: false,
+                defaultValue: 0,
+            },
+            deleted_at: {
+                type: Sequelize.DATE,
+                allowNull: true,
+                defaultValue: null,
             },
             created_at: {
                 type: Sequelize.DATE,
@@ -35,12 +56,12 @@ module.exports = {
             },
         })
 
-        await queryInterface.addIndex('refresh_tokens', ['user_id', 'refresh_token'], {
-            name: 'refresh_token_idx',
+        await queryInterface.addIndex('profiles', ['user_id', 'deleted_at'], {
+            name: 'idx_profiles_user',
         })
     },
 
     async down(queryInterface, Sequelize) {
-        await queryInterface.dropTable('refresh_tokens')
+        await queryInterface.dropTable('profiles')
     },
 }

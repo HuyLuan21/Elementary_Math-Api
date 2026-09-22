@@ -20,7 +20,7 @@ import route from './routes/index'
 const app = express()
 const server = http.createServer(app)
 
-const allowedOrigins: string[] = ['https://library.local', 'https://library.huanpenguin.click', 'http://localhost:3000']
+const allowedOrigins: string[] = ['http://localhost:8081', 'http://localhost:8081', 'exp://192.168.165.246:8081']
 
 const corsOptions: cors.CorsOptions = {
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
@@ -42,9 +42,11 @@ const corsOptions: cors.CorsOptions = {
 
 app.use(cors(corsOptions))
 
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
-})
+if (serviceAccount.project_id) {
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
+    })
+}
 
 // connect to db
 database.connect()

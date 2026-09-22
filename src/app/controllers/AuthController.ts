@@ -3,6 +3,7 @@ import { NextFunction, Request, Response } from 'express'
 import { BadRequestError, NotFoundError, UnauthorizedError } from '../errors/errors'
 import { RefreshToken } from '../models'
 import AuthService from '../services/AuthService'
+import UserService from '../services/UserService'
 import { clearCookie, setCookie } from '../utils/cookiesManager'
 import {
     LoginRequest,
@@ -19,6 +20,19 @@ import { User } from '~/app/models'
 import { IRequest } from '~/type'
 
 class AuthController {
+    // [GET] /auth/me
+    getCurrentUser = async (req: IRequest, res: Response, next: NextFunction) => {
+        try {
+            const decoded = req.decoded
+            const user = await UserService.getUserById(decoded.sub)
+            res.json({ data: user })
+        } catch (error: any) {
+            if (error instanceof NotFoundError) {
+                clearCookie({ res, cookies: ['access_token', 'refresh_token'], req })
+            }
+            return next(error)
+        }
+    }
     async sendToClient({
         res,
         user,
@@ -50,6 +64,8 @@ class AuthController {
 
         res.status(status).json({
             data: user,
+            access_token: token,
+            refresh_token: refreshToken,
         })
     }
 
@@ -98,7 +114,11 @@ class AuthController {
     // [POST] /auth/logout
     logout = async (req: IRequest, res: Response, next: NextFunction) => {
         try {
-            const { access_token, refresh_token } = req.cookies
+            const authHeader = req.headers.authorization
+            const access_token =
+                req.cookies?.access_token ||
+                (authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : req.body?.access_token)
+            const refresh_token = req.cookies?.refresh_token || req.body?.refresh_token
 
             await AuthService.logout({ access_token, refresh_token })
 
@@ -137,10 +157,11 @@ class AuthController {
         }
     }
 
-    // [GET] /auth/refresh
+    // [GET/POST] /auth/refresh
     refreshToken = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const { refresh_token } = req.cookies
+            const refresh_token =
+                req.cookies?.refresh_token || req.body?.refresh_token || (req.headers['x-refresh-token'] as string)
 
             const { newAccessToken, newRefreshToken } = await AuthService.refreshToken({ refresh_token })
 
@@ -153,7 +174,10 @@ class AuthController {
                 req,
             })
 
-            res.sendStatus(204)
+            res.status(200).json({
+                access_token: newAccessToken,
+                refresh_token: newRefreshToken,
+            })
         } catch (error) {
             if (error instanceof UnauthorizedError) {
                 clearCookie({ res, cookies: ['access_token', 'refresh_token'], req })

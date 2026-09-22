@@ -47,6 +47,7 @@ router.post('/logout', AuthController.logout)
 router.get('/me', verifyToken, AuthController.getCurrentUser)
 router.post('/loginwithtoken', validate(loginWithTokenSchema), AuthController.loginWithToken)
 router.get('/refresh', AuthController.refreshToken)
+router.post('/refresh', AuthController.refreshToken)
 router.post('/verification/send', limiter, validate(sendVerifyCodeSchema), AuthController.sendVerifyCode)
 router.post('/verification/active', validate(verifyAccountSchema), AuthController.verifyAccount)
 router.get(
