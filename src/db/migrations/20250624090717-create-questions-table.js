@@ -18,30 +18,34 @@ module.exports = {
                 },
                 onDelete: 'CASCADE',
             },
-            content: {
-                type: Sequelize.TEXT,
-                allowNull: false,
-            },
-            image_url: {
-                type: Sequelize.STRING(500),
-                allowNull: true,
-            },
             question_type: {
-                type: Sequelize.ENUM('multiple_choice', 'fill_blank', 'matching', 'drag_drop'),
+                type: Sequelize.STRING(50),
                 allowNull: false,
-                defaultValue: 'multiple_choice',
+            },
+            question_text: {
+                type: Sequelize.TEXT,
+                allowNull: true,
+                defaultValue: null,
+            },
+            content_json: {
+                type: Sequelize.JSON,
+                allowNull: true,
+                defaultValue: null,
             },
             options_json: {
                 type: Sequelize.JSON,
                 allowNull: true,
+                defaultValue: null,
             },
             correct_answer: {
                 type: Sequelize.STRING(255),
-                allowNull: false,
+                allowNull: true,
+                defaultValue: null,
             },
             skill_tag: {
                 type: Sequelize.STRING(60),
                 allowNull: true,
+                defaultValue: null,
             },
             difficulty: {
                 type: Sequelize.TINYINT.UNSIGNED,
@@ -53,10 +57,22 @@ module.exports = {
                 allowNull: false,
                 defaultValue: 0,
             },
+            created_at: {
+                type: Sequelize.DATE,
+                allowNull: false,
+                defaultValue: Sequelize.literal('CURRENT_TIMESTAMP'),
+            },
+            updated_at: {
+                type: Sequelize.DATE,
+                allowNull: false,
+                defaultValue: Sequelize.literal('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'),
+            },
         })
 
-        await queryInterface.addIndex('questions', ['lesson_id', 'order_index'], {
-            name: 'idx_questions_lesson',
+        await queryInterface.addConstraint('questions', {
+            fields: ['lesson_id', 'order_index'],
+            type: 'unique',
+            name: 'uk_questions_lesson_order',
         })
 
         await queryInterface.addIndex('questions', ['skill_tag'], {

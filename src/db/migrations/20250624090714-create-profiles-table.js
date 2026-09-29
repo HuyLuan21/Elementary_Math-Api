@@ -25,14 +25,12 @@ module.exports = {
             avatar_url: {
                 type: Sequelize.STRING(500),
                 allowNull: true,
+                defaultValue: null,
             },
             birth_date: {
                 type: Sequelize.DATEONLY,
                 allowNull: true,
-            },
-            grade: {
-                type: Sequelize.TINYINT.UNSIGNED,
-                allowNull: true,
+                defaultValue: null,
             },
             total_stars: {
                 type: Sequelize.INTEGER.UNSIGNED,

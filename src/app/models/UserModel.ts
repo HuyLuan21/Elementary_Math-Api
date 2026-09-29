@@ -12,6 +12,8 @@ class User extends Model<InferAttributes<User>, InferCreationAttributes<User>> {
     declare last_name: CreationOptional<string>
     declare role: CreationOptional<'parent' | 'admin'>
     declare status: CreationOptional<'active' | 'locked'>
+    declare pin_enabled: CreationOptional<boolean>
+    declare pin_hash: CreationOptional<string | null>
     declare created_at?: Date
     declare updated_at?: Date
 
@@ -68,6 +70,16 @@ User.init(
             type: DataTypes.ENUM('active', 'locked'),
             allowNull: false,
             defaultValue: 'active',
+        },
+        pin_enabled: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+        },
+        pin_hash: {
+            type: DataTypes.STRING(60),
+            allowNull: true,
+            defaultValue: null,
         },
         is_active: {
             type: DataTypes.VIRTUAL,

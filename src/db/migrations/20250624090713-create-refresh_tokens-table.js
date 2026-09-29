@@ -17,26 +17,30 @@ module.exports = {
                     key: 'id',
                 },
                 onDelete: 'CASCADE',
-                onUpdate: 'CASCADE',
             },
-            refresh_token: {
-                type: Sequelize.STRING(512),
+            token_hash: {
+                type: Sequelize.STRING(255),
                 allowNull: false,
+                unique: true,
+            },
+            expires_at: {
+                type: Sequelize.DATE,
+                allowNull: false,
+            },
+            revoked_at: {
+                type: Sequelize.DATE,
+                allowNull: true,
+                defaultValue: null,
             },
             created_at: {
                 type: Sequelize.DATE,
                 allowNull: false,
                 defaultValue: Sequelize.literal('CURRENT_TIMESTAMP'),
             },
-            updated_at: {
-                type: Sequelize.DATE,
-                allowNull: false,
-                defaultValue: Sequelize.literal('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'),
-            },
         })
 
-        await queryInterface.addIndex('refresh_tokens', ['user_id', 'refresh_token'], {
-            name: 'refresh_token_idx',
+        await queryInterface.addIndex('refresh_tokens', ['user_id', 'revoked_at'], {
+            name: 'idx_refresh_tokens_user',
         })
     },
 

@@ -17,17 +17,19 @@ module.exports = {
             description: {
                 type: Sequelize.TEXT,
                 allowNull: true,
+                defaultValue: null,
             },
             cover_url: {
                 type: Sequelize.STRING(500),
                 allowNull: true,
+                defaultValue: null,
             },
             order_index: {
                 type: Sequelize.INTEGER,
                 allowNull: false,
                 unique: true,
             },
-            badge_id: {
+            reward_badge_id: {
                 type: Sequelize.UUID,
                 allowNull: true,
                 references: {
@@ -91,29 +93,28 @@ module.exports = {
                 type: Sequelize.STRING(200),
                 allowNull: false,
             },
-            lesson_type: {
-                type: Sequelize.ENUM('practice', 'quiz', 'game', 'video'),
-                allowNull: false,
-                defaultValue: 'practice',
+            description: {
+                type: Sequelize.STRING(500),
+                allowNull: true,
+                defaultValue: null,
+            },
+            image_url: {
+                type: Sequelize.STRING(500),
+                allowNull: true,
+                defaultValue: null,
             },
             order_index: {
                 type: Sequelize.INTEGER,
                 allowNull: false,
             },
-            star1_threshold: {
-                type: Sequelize.TINYINT.UNSIGNED,
-                allowNull: false,
-                defaultValue: 50,
-            },
-            star2_threshold: {
-                type: Sequelize.TINYINT.UNSIGNED,
-                allowNull: false,
-                defaultValue: 75,
-            },
-            star3_threshold: {
-                type: Sequelize.TINYINT.UNSIGNED,
-                allowNull: false,
-                defaultValue: 100,
+            reward_sticker_id: {
+                type: Sequelize.UUID,
+                allowNull: true,
+                references: {
+                    model: 'stickers',
+                    key: 'id',
+                },
+                onDelete: 'SET NULL',
             },
             is_published: {
                 type: Sequelize.BOOLEAN,

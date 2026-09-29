@@ -38,10 +38,10 @@ module.exports = {
                 allowNull: false,
                 defaultValue: false,
             },
-
             pin_hash: {
                 type: Sequelize.STRING(60),
                 allowNull: true,
+                defaultValue: null,
             },
             created_at: {
                 type: Sequelize.DATE,
