@@ -1,5 +1,6 @@
 import { sequelize } from '../../config/database'
 import associations from './association'
+import Profile from './ProfileModel'
 import RefreshToken from './RefreshTokenModel'
 import User from './UserModel'
 
@@ -10,7 +11,7 @@ sequelize
     .authenticate()
     .then(() => {
         console.log('\x1b[36m%s\x1b[0m', 'Database authenticated successfully.')
-        return sequelize.sync({ alter: true })
+        return sequelize.sync({ alter: false })
     })
     .then(() => {
         console.log('\x1b[36m%s\x1b[0m', 'All models were synchronized successfully.')
@@ -18,4 +19,4 @@ sequelize
     .catch((err) => console.error('Sync failed:', err))
 
 // Export all models
-export { RefreshToken, User }
+export { Profile, RefreshToken, User }

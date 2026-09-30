@@ -23,6 +23,7 @@ class User extends Model<InferAttributes<User>, InferCreationAttributes<User>> {
 
     static associate(models: any) {
         this.hasMany(models.RefreshToken, { foreignKey: 'user_id' })
+        this.hasMany(models.Profile, { foreignKey: 'user_id', as: 'profiles' })
     }
 }
 
