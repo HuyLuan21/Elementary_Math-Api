@@ -1,6 +1,6 @@
 import { NextFunction, Response } from 'express'
 
-import { NotFoundError } from '../errors/errors'
+import { NotFoundError, UnauthorizedError } from '../errors/errors'
 import UserService from '../services/UserService'
 import { clearCookie } from '../utils/cookiesManager'
 import { IRequest } from '~/type'
@@ -9,9 +9,13 @@ class MeController {
     // [GET] /auth/me
     getCurrentUser = async (req: IRequest, res: Response, next: NextFunction) => {
         try {
-            const decoded = req.decoded
+            const userId = req.decoded?.sub
 
-            const user = await UserService.getUserById(decoded.sub)
+            if (!userId) {
+                return next(new UnauthorizedError({ message: 'Token không hợp lệ hoặc đã hết hạn' }))
+            }
+
+            const user = await UserService.getUserById(userId)
 
             res.json({ data: user })
         } catch (error: any) {

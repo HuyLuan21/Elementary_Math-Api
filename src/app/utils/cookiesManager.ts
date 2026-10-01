@@ -19,21 +19,31 @@ const getParentDomain = (hostname: string): string => {
     return hostname
 }
 
-export const clearCookie = ({ res, cookies = [], path = '/', req }: IClearCookie) => {
+const getCookieOptions = (req: Request, path: string, maxAge?: number) => {
+    const isProduction = process.env.NODE_ENV === 'production'
     const origin = req.headers.origin || req.headers.referer
     const hostname = origin ? new URL(origin).hostname : undefined
-    const domain = hostname ? `.${getParentDomain(hostname)}` : undefined
+    const domain = isProduction && hostname ? `.${getParentDomain(hostname)}` : undefined
 
+    return {
+        httpOnly: true,
+        path,
+        sameSite: isProduction ? ('none' as const) : ('lax' as const),
+        secure: isProduction,
+        ...(isProduction ? { partitioned: true } : {}),
+        ...(domain ? { domain } : {}),
+        ...(maxAge !== undefined ? { maxAge } : {}),
+    }
+}
+
+const getTokenMaxAge = (name: string) => {
+    const seconds = Number(name === 'access_token' ? process.env.EXPIRED_TOKEN : process.env.EXPIRED_REFRESH_TOKEN)
+    return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined
+}
+
+export const clearCookie = ({ res, cookies = [], path = '/', req }: IClearCookie) => {
     for (const cookie of cookies) {
-        res.cookie(cookie, '', {
-            httpOnly: true,
-            path,
-            sameSite: 'none',
-            secure: true,
-            partitioned: true,
-            maxAge: 0,
-            domain: domain,
-        })
+        res.cookie(cookie, '', getCookieOptions(req, path, 0))
     }
 }
 
@@ -45,18 +55,7 @@ interface ISetCookie {
 }
 
 export const setCookie = ({ res, cookies = [], path = '/', req }: ISetCookie) => {
-    const origin = req.headers.origin || req.headers.referer
-    const hostname = origin ? new URL(origin).hostname : undefined
-    const domain = hostname ? `.${getParentDomain(hostname)}` : undefined
-
     for (const cookie of cookies) {
-        res.cookie(cookie.name, cookie.value, {
-            httpOnly: true,
-            path,
-            sameSite: 'none',
-            secure: true,
-            partitioned: true,
-            domain: domain,
-        })
+        res.cookie(cookie.name, cookie.value, getCookieOptions(req, path, getTokenMaxAge(cookie.name)))
     }
 }
