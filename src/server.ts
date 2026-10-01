@@ -14,6 +14,7 @@ setupGlobalErrorHandling()
 import 'express-async-errors'
 import './app/queue'
 import * as database from './config/database/index'
+import associations from './app/models/association'
 import serviceAccount from './config/firebase/serviceAccount'
 import { redisClient } from './config/redis'
 import route from './routes/index'
@@ -50,6 +51,7 @@ if (serviceAccount.project_id) {
 
 // connect to db
 database.connect()
+associations()
 
 // connect to redis
 ;(async () => {
