@@ -106,7 +106,7 @@ User.init(
 
         defaultScope: {
             attributes: {
-                exclude: ['password_hash'],
+                exclude: ['password_hash', 'pin_hash'],
             },
         },
 

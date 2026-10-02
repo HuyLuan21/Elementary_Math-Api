@@ -148,7 +148,7 @@ class AuthServices {
                     },
                 })
 
-            const { password_hash: _passwordHash, ...userData } = user.toJSON()
+            const { password_hash: _passwordHash, pin_hash: _pinHash, ...userData } = user.toJSON()
 
             return {
                 user: userData,
@@ -216,6 +216,92 @@ class AuthServices {
                 refreshToken,
                 user,
             }
+        } catch (error: any) {
+            return handleServiceError(error)
+        }
+    }
+
+    setupPin = async ({
+        userId,
+        pin,
+    }: {
+        userId: string
+        pin: string
+    }) => {
+        try {
+            const pinHash = await hashValue(pin)
+            const [updatedRows] = await User.unscoped().update(
+                {
+                    pin_hash: pinHash,
+                    pin_enabled: true,
+                },
+                {
+                    where: {
+                        id: userId,
+                        pin_enabled: false,
+                        pin_hash: null,
+                    },
+                },
+            )
+
+            if (updatedRows !== 1) {
+                const user = await User.unscoped().findByPk(userId, {
+                    attributes: ['id', 'pin_enabled', 'pin_hash'],
+                })
+
+                if (!user) {
+                    throw new UnauthorizedError({
+                        message: 'Tài khoản không tồn tại',
+                        error: { code: 'TOKEN_VERIFICATION_FAILED' },
+                    })
+                }
+
+                throw new ConflictError({
+                    message: 'PIN đã được thiết lập',
+                    error: { code: 'PIN_ALREADY_SET' },
+                })
+            }
+        } catch (error: any) {
+            return handleServiceError(error)
+        }
+    }
+
+    verifyPin = async ({
+        userId,
+        pin,
+    }: {
+        userId: string
+        pin: string
+    }) => {
+        try {
+            const user = await User.unscoped().findByPk(userId, {
+                attributes: ['id', 'pin_enabled', 'pin_hash'],
+            })
+
+            if (!user) {
+                throw new UnauthorizedError({
+                    message: 'Tài khoản không tồn tại',
+                    error: { code: 'TOKEN_VERIFICATION_FAILED' },
+                })
+            }
+
+            if (!user.pin_enabled || !user.pin_hash) {
+                throw new ConflictError({
+                    message: 'PIN chưa được thiết lập',
+                    error: { code: 'PIN_NOT_SET' },
+                })
+            }
+
+            const isPinValid = await bcrypt.compare(pin, user.pin_hash)
+
+            if (!isPinValid) {
+                throw new UnauthorizedError({
+                    message: 'PIN không chính xác',
+                    error: { code: 'PIN_INVALID' },
+                })
+            }
+
+            return { verified: true }
         } catch (error: any) {
             return handleServiceError(error)
         }

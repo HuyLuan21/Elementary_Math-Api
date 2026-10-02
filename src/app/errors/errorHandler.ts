@@ -14,6 +14,23 @@ interface AuthPayload {
     [key: string]: any
 }
 
+const redactPin = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+        return value.map(redactPin)
+    }
+
+    if (value && typeof value === 'object') {
+        return Object.fromEntries(
+            Object.entries(value).map(([key, nestedValue]) => [
+                key,
+                key.toLowerCase() === 'pin' ? '[REDACTED]' : redactPin(nestedValue),
+            ]),
+        )
+    }
+
+    return value
+}
+
 const buildLogMessage = (req: Request, res: Response, err: CustomError): string => {
     const vietnamTime = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD HH:mm:ss.SSS')
 
@@ -36,7 +53,7 @@ const buildLogMessage = (req: Request, res: Response, err: CustomError): string 
             .join('; ')
     }
 
-    const body = req.body && Object.keys(req.body).length ? JSON.stringify(req.body, null, 2) : '-'
+    const body = req.body && Object.keys(req.body).length ? JSON.stringify(redactPin(req.body), null, 2) : '-'
     const query = Object.keys(req.query).length ? JSON.stringify(req.query, null, 2) : '-'
     const params = Object.keys(req.params).length ? JSON.stringify(req.params, null, 2) : '-'
 

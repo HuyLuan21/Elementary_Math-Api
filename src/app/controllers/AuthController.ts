@@ -12,6 +12,7 @@ import { clearCookie, setCookie } from '../utils/cookiesManager'
 import {
     LoginRequest,
     LoginWithTokenRequest,
+    PinRequest,
     RegisterRequest,
     ResetPassRequest,
     sendResetPassEmailRequest,
@@ -90,7 +91,7 @@ class AuthController {
             req,
         })
 
-        const { password_hash: _passwordHash, ...userData } = user.toJSON()
+        const { password_hash: _passwordHash, pin_hash: _pinHash, ...userData } = user.toJSON()
 
         res.status(status).json({
             data: userData,
@@ -154,6 +155,54 @@ class AuthController {
                 token,
                 refreshToken,
                 req,
+            })
+        } catch (error) {
+            return next(error)
+        }
+    }
+
+    // [POST] /auth/pin/setup
+    setupPin = async (
+        req: PinRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
+        try {
+            const userId = req.decoded?.sub
+
+            if (!userId) {
+                return next(new UnauthorizedError({ message: 'Token không hợp lệ hoặc đã hết hạn' }))
+            }
+
+            await AuthService.setupPin({ userId, pin: req.body.pin })
+
+            res.status(200).json({
+                data: {
+                    pin_enabled: true,
+                },
+            })
+        } catch (error) {
+            return next(error)
+        }
+    }
+
+    // [POST] /auth/pin/verify
+    verifyPin = async (
+        req: PinRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
+        try {
+            const userId = req.decoded?.sub
+
+            if (!userId) {
+                return next(new UnauthorizedError({ message: 'Token không hợp lệ hoặc đã hết hạn' }))
+            }
+
+            const result = await AuthService.verifyPin({ userId, pin: req.body.pin })
+
+            res.status(200).json({
+                data: result,
             })
         } catch (error) {
             return next(error)
