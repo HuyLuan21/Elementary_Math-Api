@@ -18,8 +18,8 @@ module.exports = {
                 },
                 onDelete: 'CASCADE',
             },
-            token_hash: {
-                type: Sequelize.STRING(255),
+            refresh_token: {
+                type: Sequelize.STRING(512),
                 allowNull: false,
                 unique: true,
             },

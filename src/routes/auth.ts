@@ -9,6 +9,7 @@ import { validate } from '../app/middlewares/validate'
 import {
     loginSchema,
     loginWithTokenSchema,
+    pinSchema,
     registerSchema,
     resetPassSchema,
     sendResetPassEmailSchema,
@@ -45,6 +46,8 @@ router.post('/register', validate(registerSchema), AuthController.register)
 router.post('/login', validate(loginSchema), AuthController.login)
 router.post('/logout', AuthController.logout)
 router.get('/me', verifyToken, AuthController.getCurrentUser)
+router.post('/pin/setup', verifyToken, validate(pinSchema), AuthController.setupPin)
+router.post('/pin/verify', verifyToken, validate(pinSchema), AuthController.verifyPin)
 router.post('/loginwithtoken', validate(loginWithTokenSchema), AuthController.loginWithToken)
 router.get('/refresh', AuthController.refreshToken)
 router.post('/refresh', AuthController.refreshToken)

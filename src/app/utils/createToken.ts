@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken'
 import { v4 as uuidv4 } from 'uuid'
+import { AuthTokenPayload } from '~/types/user.type'
 
 const JWT_SECRET = process.env.JWT_SECRET
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET
@@ -7,9 +8,7 @@ const expiredToken = Number(process.env.EXPIRED_TOKEN)
 const expiredRefreshToken = Number(process.env.EXPIRED_REFRESH_TOKEN)
 
 interface ICreateToken {
-    payload: {
-        sub: string
-    }
+    payload: Pick<AuthTokenPayload, 'sub' | 'role'>
     expToken?: number
     expRefresh?: number
 }

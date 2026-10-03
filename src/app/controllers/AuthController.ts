@@ -1,13 +1,18 @@
 import { NextFunction, Request, Response } from 'express'
 
-import { BadRequestError, NotFoundError, UnauthorizedError } from '../errors/errors'
-import { RefreshToken } from '../models'
+import {
+    BadRequestError,
+    NotFoundError,
+    UnauthorizedError,
+} from '../errors/errors'
+import { User } from '../models'
 import AuthService from '../services/AuthService'
 import UserService from '../services/UserService'
 import { clearCookie, setCookie } from '../utils/cookiesManager'
 import {
     LoginRequest,
     LoginWithTokenRequest,
+    PinRequest,
     RegisterRequest,
     ResetPassRequest,
     sendResetPassEmailRequest,
@@ -16,24 +21,42 @@ import {
     VerifyAuthChallengeIdRequest,
     VerifyForgotPasswordTokenRequest,
 } from '../validators/api/authSchema'
-import { User } from '~/app/models'
 import { IRequest } from '~/type'
 
 class AuthController {
     // [GET] /auth/me
-    getCurrentUser = async (req: IRequest, res: Response, next: NextFunction) => {
+    getCurrentUser = async (
+        req: IRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
         try {
-            const decoded = req.decoded
-            const user = await UserService.getUserById(decoded.sub)
-            res.json({ data: user })
+            const userId = req.decoded?.sub
+
+            if (!userId) {
+                return next(new UnauthorizedError({ message: 'Token không hợp lệ hoặc đã hết hạn' }))
+            }
+
+            const user = await UserService.getUserById(userId)
+
+            res.json({
+                data: user,
+            })
         } catch (error: any) {
             if (error instanceof NotFoundError) {
-                clearCookie({ res, cookies: ['access_token', 'refresh_token'], req })
+                clearCookie({
+                    res,
+                    cookies: ['access_token', 'refresh_token'],
+                    req,
+                })
             }
+
             return next(error)
         }
     }
-    async sendToClient({
+
+    // Gửi token về client
+    sendToClient = async ({
         res,
         user,
         token,
@@ -47,34 +70,53 @@ class AuthController {
         refreshToken: string
         status?: number
         req: Request
-    }) {
-        await RefreshToken.create({
-            user_id: user.id,
-            refresh_token: refreshToken,
+    }) => {
+        await AuthService.storeRefreshToken({
+            userId: user.id,
+            refreshToken,
         })
 
         setCookie({
             res,
             cookies: [
-                { name: 'access_token', value: token },
-                { name: 'refresh_token', value: refreshToken },
+                {
+                    name: 'access_token',
+                    value: token,
+                },
+                {
+                    name: 'refresh_token',
+                    value: refreshToken,
+                },
             ],
             req,
         })
 
+        const { password_hash: _passwordHash, pin_hash: _pinHash, ...userData } = user.toJSON()
+
         res.status(status).json({
-            data: user,
+            data: userData,
             access_token: token,
             refresh_token: refreshToken,
         })
     }
 
     // [POST] /auth/register
-    register = async (req: RegisterRequest, res: Response, next: NextFunction) => {
-        const { full_name, email, password } = req.body
-
+    register = async (
+        req: RegisterRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
         try {
-            const { user, auth_challenge_id } = await AuthService.register({ full_name, email, password })
+            const { full_name, email, password } = req.body
+
+            const {
+                user,
+                auth_challenge_id,
+            } = await AuthService.register({
+                full_name,
+                email,
+                password,
+            })
 
             res.status(201).json({
                 data: {
@@ -90,39 +132,112 @@ class AuthController {
     }
 
     // [POST] /auth/login
-    login = async (req: LoginRequest, res: Response, next: NextFunction) => {
+    login = async (
+        req: LoginRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
         try {
             const { email, password } = req.body
 
-            const { token, refreshToken, user, auth_challenge_id } = await AuthService.login({ email, password })
+            const {
+                token,
+                refreshToken,
+                user,
+            } = await AuthService.login({
+                email,
+                password,
+            })
 
-            if (user.is_active) {
-                this.sendToClient({ res, user, token, refreshToken, req })
-            } else {
-                res.status(200).json({
-                    data: user,
-                    meta: {
-                        auth_challenge_id,
-                    },
-                })
+            await this.sendToClient({
+                res,
+                user,
+                token,
+                refreshToken,
+                req,
+            })
+        } catch (error) {
+            return next(error)
+        }
+    }
+
+    // [POST] /auth/pin/setup
+    setupPin = async (
+        req: PinRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
+        try {
+            const userId = req.decoded?.sub
+
+            if (!userId) {
+                return next(new UnauthorizedError({ message: 'Token không hợp lệ hoặc đã hết hạn' }))
             }
+
+            await AuthService.setupPin({ userId, pin: req.body.pin })
+
+            res.status(200).json({
+                data: {
+                    pin_enabled: true,
+                },
+            })
+        } catch (error) {
+            return next(error)
+        }
+    }
+
+    // [POST] /auth/pin/verify
+    verifyPin = async (
+        req: PinRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
+        try {
+            const userId = req.decoded?.sub
+
+            if (!userId) {
+                return next(new UnauthorizedError({ message: 'Token không hợp lệ hoặc đã hết hạn' }))
+            }
+
+            const result = await AuthService.verifyPin({ userId, pin: req.body.pin })
+
+            res.status(200).json({
+                data: result,
+            })
         } catch (error) {
             return next(error)
         }
     }
 
     // [POST] /auth/logout
-    logout = async (req: IRequest, res: Response, next: NextFunction) => {
+    logout = async (
+        req: IRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
         try {
             const authHeader = req.headers.authorization
+
             const access_token =
                 req.cookies?.access_token ||
-                (authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : req.body?.access_token)
-            const refresh_token = req.cookies?.refresh_token || req.body?.refresh_token
+                (authHeader?.startsWith('Bearer ')
+                    ? authHeader.split(' ')[1]
+                    : req.body?.access_token)
 
-            await AuthService.logout({ access_token, refresh_token })
+            const refresh_token =
+                req.cookies?.refresh_token ||
+                req.body?.refresh_token
 
-            clearCookie({ res, cookies: ['access_token', 'refresh_token'], req })
+            await AuthService.logout({
+                access_token,
+                refresh_token,
+            })
+
+            clearCookie({
+                res,
+                cookies: ['access_token', 'refresh_token'],
+                req,
+            })
 
             res.sendStatus(204)
         } catch (error) {
@@ -131,7 +246,11 @@ class AuthController {
     }
 
     // [POST] /auth/loginwithtoken
-    loginWithToken = async (req: LoginWithTokenRequest, res: Response, next: NextFunction) => {
+    loginWithToken = async (
+        req: LoginWithTokenRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
         try {
             const { token } = req.body
 
@@ -139,37 +258,52 @@ class AuthController {
                 token: accessToken,
                 refreshToken,
                 user,
-                auth_challenge_id,
-            } = await AuthService.loginWithToken({ token })
+            } = await AuthService.loginWithToken({
+                token,
+            })
 
-            if (auth_challenge_id) {
-                res.status(200).json({
-                    data: user,
-                    meta: {
-                        auth_challenge_id,
-                    },
-                })
-            } else {
-                this.sendToClient({ res, user, token: accessToken, refreshToken, req })
-            }
+            await this.sendToClient({
+                res,
+                user,
+                token: accessToken,
+                refreshToken,
+                req,
+            })
         } catch (error) {
             return next(error)
         }
     }
 
     // [GET/POST] /auth/refresh
-    refreshToken = async (req: Request, res: Response, next: NextFunction) => {
+    refreshToken = async (
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ) => {
         try {
             const refresh_token =
-                req.cookies?.refresh_token || req.body?.refresh_token || (req.headers['x-refresh-token'] as string)
+                req.cookies?.refresh_token ||
+                req.body?.refresh_token ||
+                (req.headers['x-refresh-token'] as string)
 
-            const { newAccessToken, newRefreshToken } = await AuthService.refreshToken({ refresh_token })
+            const {
+                newAccessToken,
+                newRefreshToken,
+            } = await AuthService.refreshToken({
+                refresh_token,
+            })
 
             setCookie({
                 res,
                 cookies: [
-                    { name: 'access_token', value: newAccessToken },
-                    { name: 'refresh_token', value: newRefreshToken },
+                    {
+                        name: 'access_token',
+                        value: newAccessToken,
+                    },
+                    {
+                        name: 'refresh_token',
+                        value: newRefreshToken,
+                    },
                 ],
                 req,
             })
@@ -180,7 +314,11 @@ class AuthController {
             })
         } catch (error) {
             if (error instanceof UnauthorizedError) {
-                clearCookie({ res, cookies: ['access_token', 'refresh_token'], req })
+                clearCookie({
+                    res,
+                    cookies: ['access_token', 'refresh_token'],
+                    req,
+                })
             }
 
             return next(error)
@@ -188,100 +326,196 @@ class AuthController {
     }
 
     // [GET] /auth/verification/send
-    sendVerifyCode = async (req: SendVerifyCodeRequest, res: Response, next: NextFunction) => {
+    sendVerifyCode = async (
+        req: SendVerifyCodeRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
         try {
             const { email } = req.body
 
-            const user = await User.findOne({ where: { email }, attributes: ['is_active'] })
+            const user = await User.findOne({
+                where: {
+                    email,
+                },
+            })
 
-            if (user?.is_active) {
-                return next(new BadRequestError({ message: 'Tài khoản đã được xác thực' }))
+            if (!user) {
+                return next(
+                    new NotFoundError({
+                        message: 'Email không tồn tại',
+                    }),
+                )
             }
 
-            await AuthService.sendVerifyCode({ email, type: 'activate_account' })
+            if (user.status === 'active') {
+                return next(
+                    new BadRequestError({
+                        message:
+                            'Tài khoản đã được xác thực',
+                    }),
+                )
+            }
+
+            await AuthService.sendVerifyCode({
+                email,
+                type: 'activate_account',
+            })
 
             res.sendStatus(202)
         } catch (error: any) {
-            if (error?.parent?.errno === 1452) {
-                return next(new NotFoundError({ message: 'Email không tồn tại' }))
-            }
-
             return next(error)
         }
     }
 
     // [GET] /auth/forgot-password
-    sendResetPassEmail = async (req: sendResetPassEmailRequest, res: Response, next: NextFunction) => {
+    sendResetPassEmail = async (
+        req: sendResetPassEmailRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
         try {
             const { email } = req.body
 
-            await AuthService.sendResetPasswordEmail({ email })
+            const user = await User.findOne({
+                where: {
+                    email,
+                },
+            })
 
-            res.sendStatus(202)
-        } catch (error: any) {
-            if (error?.parent?.errno === 1452) {
-                return next(new NotFoundError({ message: 'Email not found' }))
+            if (!user) {
+                return next(
+                    new NotFoundError({
+                        message: 'Email không tồn tại',
+                    }),
+                )
             }
 
+            await AuthService.sendResetPasswordEmail({
+                email,
+            })
+
+            res.sendStatus(202)
+        } catch (error) {
             return next(error)
         }
     }
 
     // [POST] /auth/reset-password
-    resetPassword = async (req: ResetPassRequest, res: Response, next: NextFunction) => {
+    resetPassword = async (
+        req: ResetPassRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
         try {
-            const { email, token, password } = req.body
+            const {
+                email,
+                token,
+                password,
+            } = req.body
 
-            await AuthService.resetPassword({ email, token, password })
+            await AuthService.resetPassword({
+                email,
+                token,
+                password,
+            })
 
-            res.json({ message: 'Password reset successfully' })
+            res.json({
+                message:
+                    'Password reset successfully',
+            })
         } catch (error) {
             return next(error)
         }
     }
 
     // [POST] /auth/verification/active
-    verifyAccount = async (req: VerifyAccountRequest, res: Response, next: NextFunction) => {
+    verifyAccount = async (
+        req: VerifyAccountRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
         try {
             const { email, code } = req.body
 
-            const { token, refreshToken } = await AuthService.verifyAccount({ email, code })
+            const {
+                token,
+                refreshToken,
+                user,
+            } = await AuthService.verifyAccount({
+                email,
+                code,
+            })
+
+            await AuthService.storeRefreshToken({
+                userId: user.id,
+                refreshToken,
+            })
 
             setCookie({
                 res,
                 cookies: [
-                    { name: 'access_token', value: token },
-                    { name: 'refresh_token', value: refreshToken },
+                    {
+                        name: 'access_token',
+                        value: token,
+                    },
+                    {
+                        name: 'refresh_token',
+                        value: refreshToken,
+                    },
                 ],
                 req,
             })
 
-            res.status(200).json({ message: 'Account verified successfully' })
+            res.status(200).json({
+                message:
+                    'Account verified successfully',
+            })
         } catch (error) {
             return next(error)
         }
     }
 
     // [GET] /auth/verification/challenge/:auth_challenge_id
-    verifyAuthChallengeId = async (req: VerifyAuthChallengeIdRequest, res: Response, next: NextFunction) => {
+    verifyAuthChallengeId = async (
+        req: VerifyAuthChallengeIdRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
         try {
             const { auth_challenge_id } = req.params
             const { email } = req.query
 
-            const payload = await AuthService.verifyAuthChallengeId({ auth_challenge_id, email: email as string })
+            const payload =
+                await AuthService.verifyAuthChallengeId({
+                    auth_challenge_id,
+                    email: email as string,
+                })
 
-            res.json({ data: payload })
+            res.json({
+                data: payload,
+            })
         } catch (error) {
             return next(error)
         }
     }
 
     // [POST] /auth/forgot-password/verify
-    verifyForgotPasswordToken = async (req: VerifyForgotPasswordTokenRequest, res: Response, next: NextFunction) => {
+    verifyForgotPasswordToken = async (
+        req: VerifyForgotPasswordTokenRequest,
+        res: Response,
+        next: NextFunction,
+    ) => {
         try {
-            const { token, email } = req.body
+            const {
+                token,
+                email,
+            } = req.body
 
-            await AuthService.verifyForgotPasswordToken({ token, email })
+            await AuthService.verifyForgotPasswordToken({
+                token,
+                email,
+            })
 
             res.sendStatus(204)
         } catch (error) {

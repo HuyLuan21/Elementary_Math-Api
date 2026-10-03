@@ -7,6 +7,7 @@ import verifyToken from '~/app/middlewares/verifyToken'
 router.use(verifyToken)
 
 router.get('/', ProfileController.getProfiles)
+router.get('/:profileId/achievements', ProfileController.getProfileAchievements)
 router.get('/:id', ProfileController.getProfileById)
 router.post('/', ProfileController.createProfile)
 router.put('/:id', ProfileController.updateProfile)

@@ -7,8 +7,9 @@ class RefreshToken extends Model<InferAttributes<RefreshToken>, InferCreationAtt
     declare id: CreationOptional<string>
     declare user_id: string
     declare refresh_token: string
-    declare created_at?: Date
-    declare updated_at?: Date
+    declare expires_at: Date
+    declare revoked_at: CreationOptional<Date | null>
+    declare created_at: CreationOptional<Date>
 
     static associate(models: any) {
         this.belongsTo(models.User, { foreignKey: 'user_id' })
@@ -36,11 +37,27 @@ RefreshToken.init(
         refresh_token: {
             type: DataTypes.STRING(512),
             allowNull: false,
+            unique: true,
+        },
+        expires_at: {
+            type: DataTypes.DATE,
+            allowNull: false,
+        },
+        revoked_at: {
+            type: DataTypes.DATE,
+            allowNull: true,
+            defaultValue: null,
+        },
+        created_at: {
+            type: DataTypes.DATE,
+            allowNull: false,
+            defaultValue: DataTypes.NOW,
         },
     },
     {
         tableName: 'refresh_tokens',
         sequelize,
+        timestamps: false,
     },
 )
 

@@ -29,6 +29,12 @@ export const loginWithTokenSchema = z.object({
     }),
 })
 
+export const pinSchema = z.object({
+    body: z.object({
+        pin: z.string().regex(/^\d{4}$/, 'PIN phải gồm chính xác 4 chữ số'),
+    }),
+})
+
 export const sendVerifyCodeSchema = z.object({
     body: z.object({
         email: emailSchema,
@@ -71,6 +77,7 @@ export const verifyForgotPasswordTokenSchema = z.object({
 export type RegisterRequest = TypedRequest<z.infer<typeof registerSchema>['body']>
 export type LoginRequest = TypedRequest<z.infer<typeof loginSchema>['body']>
 export type LoginWithTokenRequest = TypedRequest<z.infer<typeof loginWithTokenSchema>['body']>
+export type PinRequest = TypedRequest<z.infer<typeof pinSchema>['body']>
 export type SendVerifyCodeRequest = TypedRequest<z.infer<typeof sendVerifyCodeSchema>['body']>
 export type sendResetPassEmailRequest = TypedRequest<z.infer<typeof sendResetPassEmailSchema>['body']>
 export type ResetPassRequest = TypedRequest<z.infer<typeof resetPassSchema>['body']>

@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'async_hooks'
 
 interface UserContext {
-    currentUserId: number | null
+    currentUserId: string | null
     requestId: string | string[]
     timestamp: Date
     ip?: string
