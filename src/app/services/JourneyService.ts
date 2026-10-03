@@ -1,7 +1,17 @@
-import { Chapter, Lesson, ProfileLessonProgress } from '../models'
+import { Chapter, Lesson, Profile, ProfileLessonProgress } from '../models'
 
 class JourneyService {
     async getJourney(profileId?: string) {
+        // Lấy profileId mặc định nếu chưa truyền
+        if (!profileId) {
+            const defaultProfile = await Profile.findOne({
+                order: [['created_at', 'ASC']],
+            })
+            if (defaultProfile) {
+                profileId = defaultProfile.id
+            }
+        }
+
         // Lấy tất cả chương và bài học đã publish
         const chapters = await Chapter.findAll({
             where: { is_published: true },

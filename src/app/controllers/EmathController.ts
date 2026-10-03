@@ -1,7 +1,8 @@
-import { Request, Response, NextFunction } from 'express'
+import { NextFunction, Request, Response } from 'express'
+
 import JourneyService from '../services/JourneyService'
-import LessonService from '../services/LessonService'
 import KidCornerService from '../services/KidCornerService'
+import LessonService from '../services/LessonService'
 
 class EmathController {
     // 1. Lấy dữ liệu bản đồ học tập (Journey)
@@ -22,12 +23,19 @@ class EmathController {
     getLessonQuestions = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { id } = req.params
-            const data = await LessonService.getLessonDetailWithQuestions(id)
+            const profileId = (req.query.profile_id as string) || (req as any).user?.active_profile_id || undefined
+            const data = await LessonService.getLessonDetailWithQuestions(id, profileId)
             res.json({
                 message: 'Lấy câu hỏi bài học thành công',
                 data,
             })
-        } catch (error) {
+        } catch (error: any) {
+            if (error.isLocked) {
+                return res.status(403).json({
+                    message: error.message || 'Bài học này đang bị khóa. Bé hãy hoàn thành bài học trước để mở khóa nhé!',
+                    isLocked: true,
+                })
+            }
             next(error)
         }
     }

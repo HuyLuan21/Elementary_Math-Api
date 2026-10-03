@@ -522,7 +522,7 @@ module.exports = {
             lessonIndex: 9,
             type: 'shape_choice',
             text: 'Hình nào không phải hình tròn?',
-            options: ['circle', 'square', 'circle'],
+            options: ['circle', 'square', 'triangle'],
             answer: 'square',
             skill: 'shape',
         })
