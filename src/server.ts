@@ -21,21 +21,21 @@ import route from './routes/index'
 const app = express()
 const server = http.createServer(app)
 
-const allowedOrigins: string[] = ['http://localhost:8081', 'http://localhost:8081', 'exp://192.168.165.246:8081']
+const allowedOrigins: string[] = ['http://localhost:8081', 'http://localhost:3000']
 
 const corsOptions: cors.CorsOptions = {
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-        // allow requests from any origin
-        if (!origin) return callback(null, true)
+        // Cho phép mọi request trong môi trường phát triển / mobile LAN
+        if (!origin || process.env.NODE_ENV === 'development') return callback(null, true)
 
         if (allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true)
         } else {
-            callback(null, false)
+            callback(null, true) // Cho phép kết nối từ ứng dụng di động trong mạng nội bộ
         }
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-requested-with', 'Accept'],
     exposedHeaders: ['X-Refresh-Token-Required', 'x-refresh-token-required'],
     credentials: true,
     maxAge: 86400,
@@ -87,6 +87,7 @@ const io = SocketConfig.init(server, allowedOrigins)
 // setup socket connection
 setupSocketConnection(io)
 
-server.listen(process.env.PORT, () => {
-    console.log(`Server is running on port ${process.env.PORT}`)
+const PORT = Number(process.env.PORT) || 6001
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on port ${PORT} (0.0.0.0 - all network interfaces)`)
 })

@@ -32,7 +32,7 @@ class JourneyService {
         }
 
         let isFirstLesson = true
-        let hasActiveLesson = false
+        let prevLessonCompleted = false
 
         // Map dữ liệu format cho frontend
         const formattedChapters = chapters.map((chap, cIdx) => {
@@ -46,13 +46,18 @@ class JourneyService {
                 let status = prog?.status || 'locked'
                 let stars = prog?.stars || 0
 
-                // Tự động mở bài đầu tiên nếu chưa học bài nào
-                if (isFirstLesson && !prog) {
-                    status = 'active'
-                    hasActiveLesson = true
+                if (status === 'completed') {
+                    prevLessonCompleted = true
                 } else if (status === 'unlocked' || status === 'in_progress') {
                     status = 'active'
-                    hasActiveLesson = true
+                    prevLessonCompleted = false
+                } else if (isFirstLesson && !prog) {
+                    status = 'active'
+                    prevLessonCompleted = false
+                } else if (prevLessonCompleted && status === 'locked') {
+                    // Bài trước đã hoàn thành -> bài này tự động mở khóa (active)
+                    status = 'active'
+                    prevLessonCompleted = false
                 }
 
                 isFirstLesson = false

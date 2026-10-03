@@ -146,9 +146,11 @@ class LessonService {
 
     async submitLesson(profileId: string, lessonId: string, correctCount: number, totalQuestions: number) {
         const score = totalQuestions > 0 ? (correctCount / totalQuestions) * 10 : 0
-        let starsEarned = 1
+        let starsEarned = 0
         if (score >= 8.0) starsEarned = 3
         else if (score >= 5.0) starsEarned = 2
+        else if (score >= 2.0) starsEarned = 1
+        else starsEarned = 0
 
         const now = new Date()
 
