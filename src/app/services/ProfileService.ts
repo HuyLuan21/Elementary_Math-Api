@@ -1,3 +1,6 @@
+import { QueryTypes } from 'sequelize'
+
+import { sequelize } from '../../config/database'
 import { BadRequestError, NotFoundError } from '../errors/errors'
 import { Profile } from '../models'
 
@@ -13,6 +16,25 @@ interface IUpdateProfile {
     display_name?: string
     avatar_url?: string | null
     birth_date?: string | null
+}
+
+interface IBadgeAchievement {
+    id: string
+    code: string
+    name: string
+    description: string | null
+    image_url: string | null
+    earned_at: Date
+}
+
+interface IStickerAchievement {
+    id: string
+    code: string
+    name: string
+    description: string | null
+    image_url: string | null
+    sound_url: string | null
+    unlocked_at: Date
 }
 
 class ProfileService {
@@ -33,6 +55,45 @@ class ProfileService {
         }
 
         return profile
+    }
+
+    async getProfileAchievements(userId: string, profileId: string) {
+        await this.getProfileById(userId, profileId)
+
+        const [badges, stickers] = await Promise.all([
+            sequelize.query<IBadgeAchievement>(
+                `SELECT b.id, b.code, b.name, b.description, b.image_url, pb.earned_at
+                FROM profile_badges AS pb
+                INNER JOIN badges AS b ON b.id = pb.badge_id
+                WHERE pb.profile_id = :profileId
+                ORDER BY pb.earned_at DESC`,
+                {
+                    replacements: { profileId },
+                    type: QueryTypes.SELECT,
+                },
+            ),
+            sequelize.query<IStickerAchievement>(
+                `SELECT s.id, s.code, s.name, s.description, s.image_url, s.sound_url,
+                    ps.unlocked_at
+                FROM profile_stickers AS ps
+                INNER JOIN stickers AS s ON s.id = ps.sticker_id
+                WHERE ps.profile_id = :profileId
+                ORDER BY s.order_index ASC`,
+                {
+                    replacements: { profileId },
+                    type: QueryTypes.SELECT,
+                },
+            ),
+        ])
+
+        return {
+            summary: {
+                badge_count: badges.length,
+                sticker_count: stickers.length,
+            },
+            badges,
+            stickers,
+        }
     }
 
     async createProfile(userId: string, data: ICreateProfile) {

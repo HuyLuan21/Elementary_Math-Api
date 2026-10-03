@@ -49,6 +49,22 @@ class ProfileController {
         }
     }
 
+    getProfileAchievements = async (req: IRequest, res: Response, next: NextFunction) => {
+        try {
+            const userId = req.decoded?.sub
+            if (!userId) throw new UnauthorizedError({ message: 'Token không hợp lệ hoặc đã hết hạn' })
+            const { profileId } = req.params
+
+            const achievements = await ProfileService.getProfileAchievements(userId, profileId)
+
+            res.json({
+                data: achievements,
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
+
     // Tạo hồ sơ bé
     createProfile = async (
         req: IRequest,
