@@ -1,4 +1,4 @@
-import { Chapter, Lesson, Profile, ProfileLessonProgress, Question, Sticker } from '../models'
+import { Badge, Chapter, Lesson, Profile, ProfileBadge, ProfileLessonProgress, ProfileSticker, Question, Sticker } from '../models'
 
 const LABEL_TRANSLATIONS: Record<string, string> = {
     red: 'Màu đỏ 🔴',
@@ -37,9 +37,8 @@ const EMOJI_MAP: Record<string, string> = {
 }
 
 class LessonService {
-    // 1. Kiểm tra bài học có được phép truy cập hay không
-    async isLessonUnlocked(lessonId: string, profileId?: string): Promise<{ isUnlocked: boolean; reason?: string }> {
-        // A. Lấy toàn bộ danh sách bài học theo thứ tự tăng dần của các chương
+    // Helper phân giải ID bài học (hỗ trợ cả UUID lẫn số thứ tự '1', '2', ...)
+    async resolveLesson(rawId: string): Promise<{ lesson: Lesson | null; allLessons: Lesson[]; index: number }> {
         const allChapters = await Chapter.findAll({
             where: { is_published: true },
             order: [['order_index', 'ASC']],
@@ -53,36 +52,68 @@ class LessonService {
             ],
         })
 
-        const allLessonsSequence: Lesson[] = []
+        const allLessons: Lesson[] = []
         for (const chap of allChapters) {
             const sortedLessons = ((chap as any).lessons || []).sort(
                 (a: any, b: any) => a.order_index - b.order_index,
             )
-            allLessonsSequence.push(...sortedLessons)
+            allLessons.push(...sortedLessons)
         }
 
-        const currIndex = allLessonsSequence.findIndex((l) => l.id === lessonId)
-        if (currIndex === -1) {
+        // 1. Tìm bằng UUID chính xác
+        let index = allLessons.findIndex((l) => l.id === rawId)
+        if (index !== -1) {
+            return { lesson: allLessons[index], allLessons, index }
+        }
+
+        // 2. Tìm bằng số thứ tự (ví dụ: '1', '2', '3')
+        const num = Number(rawId)
+        if (!isNaN(num) && num >= 1 && num <= allLessons.length) {
+            index = num - 1
+            return { lesson: allLessons[index], allLessons, index }
+        }
+
+        // 3. Tìm bằng Lesson.findByPk
+        const directLesson = await Lesson.findByPk(rawId)
+        if (directLesson) {
+            index = allLessons.findIndex((l) => l.id === directLesson.id)
+            return { lesson: directLesson, allLessons, index }
+        }
+
+        return { lesson: null, allLessons, index: -1 }
+    }
+
+    // 1. Kiểm tra bài học có được phép truy cập hay không
+    async isLessonUnlocked(lessonId: string, profileId?: string): Promise<{ isUnlocked: boolean; reason?: string; lesson?: Lesson }> {
+        const { lesson, allLessons, index: currIndex } = await this.resolveLesson(lessonId)
+        if (!lesson || currIndex === -1) {
             return { isUnlocked: false, reason: 'Không tìm thấy bài học trong chương trình học' }
         }
 
         // Nếu là bài đầu tiên của chương trình -> Luôn mở khóa
         if (currIndex === 0) {
-            return { isUnlocked: true }
+            return { isUnlocked: true, lesson }
         }
 
-        // Nếu không có profileId mà không phải bài đầu tiên -> Khóa
+        // Nếu không có profileId, lấy profile mặc định của hệ thống
         if (!profileId) {
-            const prevLesson = allLessonsSequence[currIndex - 1]
-            return {
-                isUnlocked: false,
-                reason: `Bài học đang bị khóa 🔒. Bé hãy hoàn thành bài trước "${prevLesson.title}" để mở khóa nhé!`,
+            const defaultProfile = await Profile.findOne({
+                order: [['created_at', 'ASC']],
+            })
+            if (defaultProfile) {
+                profileId = defaultProfile.id
+            } else {
+                const prevLesson = allLessons[currIndex - 1]
+                return {
+                    isUnlocked: false,
+                    reason: `Bài học đang bị khóa 🔒. Bé hãy hoàn thành bài trước "${prevLesson.title}" để mở khóa nhé!`,
+                }
             }
         }
 
         // B. Nếu bài này đã có record completed, unlocked, hoặc in_progress thì cho phép
         const currentProgress = await ProfileLessonProgress.findOne({
-            where: { profile_id: profileId, lesson_id: lessonId },
+            where: { profile_id: profileId, lesson_id: lesson.id },
         })
 
         if (
@@ -91,11 +122,11 @@ class LessonService {
                 currentProgress.status === 'unlocked' ||
                 currentProgress.status === 'in_progress')
         ) {
-            return { isUnlocked: true }
+            return { isUnlocked: true, lesson }
         }
 
         // C. Kiểm tra bài học ngay trước đó trong chuỗi bài học
-        const prevLesson = allLessonsSequence[currIndex - 1]
+        const prevLesson = allLessons[currIndex - 1]
         const prevProgress = await ProfileLessonProgress.findOne({
             where: { profile_id: profileId, lesson_id: prevLesson.id, status: 'completed' },
         })
@@ -103,17 +134,17 @@ class LessonService {
         if (prevProgress) {
             // Tự động mở khóa bài này
             await ProfileLessonProgress.findOrCreate({
-                where: { profile_id: profileId, lesson_id: lessonId },
+                where: { profile_id: profileId, lesson_id: lesson.id },
                 defaults: {
                     profile_id: profileId,
-                    lesson_id: lessonId,
+                    lesson_id: lesson.id,
                     status: 'unlocked',
                     stars: 0,
                     best_score: 0,
                     attempts_count: 0,
                 },
             })
-            return { isUnlocked: true }
+            return { isUnlocked: true, lesson }
         }
 
         return {
@@ -132,7 +163,12 @@ class LessonService {
             throw err
         }
 
-        const lesson = await Lesson.findByPk(lessonId, {
+        const targetLesson = unlockCheck.lesson || (await this.resolveLesson(lessonId)).lesson
+        if (!targetLesson) {
+            throw new Error('Không tìm thấy bài học')
+        }
+
+        const lesson = await Lesson.findByPk(targetLesson.id, {
             include: [
                 {
                     model: Question,
@@ -258,6 +294,9 @@ class LessonService {
             throw err
         }
 
+        const targetLesson = unlockCheck.lesson || (await this.resolveLesson(lessonId)).lesson
+        const realLessonId = targetLesson ? targetLesson.id : lessonId
+
         const score = totalQuestions > 0 ? (correctCount / totalQuestions) * 10 : 0
         let starsEarned = 0
         if (score >= 8.0) starsEarned = 3
@@ -267,12 +306,12 @@ class LessonService {
 
         const now = new Date()
 
-        // Tìm hoặc tạo tiến độ bài học
+        // Tìm hoặc tạo tiến độ bài học với realLessonId
         const [progress, created] = await ProfileLessonProgress.findOrCreate({
-            where: { profile_id: profileId, lesson_id: lessonId },
+            where: { profile_id: profileId, lesson_id: realLessonId },
             defaults: {
                 profile_id: profileId,
-                lesson_id: lessonId,
+                lesson_id: realLessonId,
                 status: 'completed',
                 stars: starsEarned,
                 best_score: score,
@@ -325,7 +364,7 @@ class LessonService {
             allLessonsSequence.push(...sortedLessons)
         }
 
-        const currIndex = allLessonsSequence.findIndex((l) => l.id === lessonId)
+        const currIndex = allLessonsSequence.findIndex((l) => l.id === realLessonId)
         if (currIndex !== -1 && currIndex + 1 < allLessonsSequence.length) {
             const nextLesson = allLessonsSequence[currIndex + 1]
             const nextProgress = await ProfileLessonProgress.findOne({
@@ -340,6 +379,82 @@ class LessonService {
                     best_score: 0,
                     attempts_count: 0,
                 })
+            }
+        }
+
+        // Tự động trao Sticker phần thưởng của bài học (nếu có)
+        if (targetLesson.reward_sticker_id) {
+            await ProfileSticker.findOrCreate({
+                where: { profile_id: profileId, sticker_id: targetLesson.reward_sticker_id },
+                defaults: {
+                    profile_id: profileId,
+                    sticker_id: targetLesson.reward_sticker_id,
+                    unlocked_at: now,
+                    is_seen: false,
+                },
+            })
+        }
+
+        // Tự động trao Huy hiệu (Badges)
+        // 1. Huy hiệu bài học đầu tiên (FIRST_LESSON)
+        if (allProgress.length >= 1) {
+            const firstBadge = await Badge.findOne({ where: { condition_type: 'first_lesson', is_active: true } })
+            if (firstBadge) {
+                await ProfileBadge.findOrCreate({
+                    where: { profile_id: profileId, badge_id: firstBadge.id },
+                    defaults: {
+                        profile_id: profileId,
+                        badge_id: firstBadge.id,
+                        earned_at: now,
+                        is_seen: false,
+                    },
+                })
+            }
+        }
+
+        // 2. Huy hiệu hoàn thành 10 bài học (TEN_LESSONS)
+        if (allProgress.length >= 10) {
+            const tenBadge = await Badge.findOne({ where: { condition_type: 'lessons_completed', condition_value: 10, is_active: true } })
+            if (tenBadge) {
+                await ProfileBadge.findOrCreate({
+                    where: { profile_id: profileId, badge_id: tenBadge.id },
+                    defaults: {
+                        profile_id: profileId,
+                        badge_id: tenBadge.id,
+                        earned_at: now,
+                        is_seen: false,
+                    },
+                })
+            }
+        }
+
+        // 3. Huy hiệu hoàn thành từng chặng/chương (CHAPTER_COMPLETED)
+        if (targetLesson.chapter_id) {
+            const chapterLessons = await Lesson.findAll({
+                where: { chapter_id: targetLesson.chapter_id, is_published: true },
+            })
+            const chapterLessonIds = chapterLessons.map((l) => l.id)
+            const completedInChapter = await ProfileLessonProgress.count({
+                where: {
+                    profile_id: profileId,
+                    lesson_id: chapterLessonIds,
+                    status: 'completed',
+                },
+            })
+
+            if (completedInChapter === chapterLessons.length && chapterLessons.length > 0) {
+                const currentChapter = await Chapter.findByPk(targetLesson.chapter_id)
+                if (currentChapter && currentChapter.reward_badge_id) {
+                    await ProfileBadge.findOrCreate({
+                        where: { profile_id: profileId, badge_id: currentChapter.reward_badge_id },
+                        defaults: {
+                            profile_id: profileId,
+                            badge_id: currentChapter.reward_badge_id,
+                            earned_at: now,
+                            is_seen: false,
+                        },
+                    })
+                }
             }
         }
 
