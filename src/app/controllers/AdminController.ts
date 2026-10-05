@@ -14,8 +14,14 @@ class AdminController {
 
     getAccounts = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const data = await AdminService.getAccounts()
-            res.json({ data })
+            const { page, limit, search, status } = req.query
+            const result = await AdminService.getAccounts({
+                page: page as string,
+                limit: limit as string,
+                search: search as string,
+                status: status as 'all' | 'active' | 'suspended',
+            })
+            res.json(result)
         } catch (error) {
             next(error)
         }

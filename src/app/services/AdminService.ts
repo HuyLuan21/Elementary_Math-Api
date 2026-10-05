@@ -47,10 +47,38 @@ class AdminService {
         }
     }
 
-    async getAccounts() {
-        const users = await User.findAll({
-            where: { role: 'parent' },
+    async getAccounts(params?: {
+        page?: number | string
+        limit?: number | string
+        search?: string
+        status?: 'all' | 'active' | 'suspended'
+    }) {
+        const pageNum = Math.max(1, Number(params?.page) || 1)
+        const limitNum = Math.min(100, Math.max(1, Number(params?.limit) || 10))
+        const offset = (pageNum - 1) * limitNum
+
+        const userWhere: any = { role: 'parent' }
+
+        if (params?.status === 'active') {
+            userWhere.status = 'active'
+        } else if (params?.status === 'suspended') {
+            userWhere.status = 'locked'
+        }
+
+        if (params?.search && params.search.trim()) {
+            const searchTerm = `%${params.search.trim()}%`
+            userWhere[Op.or] = [
+                { email: { [Op.like]: searchTerm } },
+                { full_name: { [Op.like]: searchTerm } },
+            ]
+        }
+
+        const { count, rows: users } = await User.findAndCountAll({
+            where: userWhere,
+            limit: limitNum,
+            offset,
             order: [['created_at', 'DESC']],
+            distinct: true,
             include: [
                 {
                     model: Profile,
@@ -59,38 +87,73 @@ class AdminService {
             ],
         })
 
-        const result = []
-
+        // Gom tất cả Profile IDs trong trang hiện tại để query batch siêu nhanh
+        const allLoadedProfiles: any[] = []
         for (const u of users) {
-            const userJson = u.toJSON() as any
-            const profilesList = []
-            const AVATAR_FALLBACK_ICONS = ['🦁', '🦄', '🐼', '🐶', '🐱', '🦊', '🐯', '🐰']
-            const AVATAR_MAP: Record<string, string> = {
-                '/avatars/bunny.png': '🐰',
-                '/avatars/cat.png': '🐱',
-                '/avatars/lion.png': '🦁',
-                '/avatars/unicorn.png': '🦄',
-                '/avatars/panda.png': '🐼',
-                '/avatars/dog.png': '🐶',
-                '/avatars/fox.png': '🦊',
-                '/avatars/tiger.png': '🐯',
+            const uJson = u.toJSON() as any
+            if (Array.isArray(uJson.profiles)) {
+                allLoadedProfiles.push(...uJson.profiles)
             }
+        }
 
+        const profileIds = allLoadedProfiles.map((p) => p.id)
+
+        // Batch queries cho stats của profile
+        const [progressRecords, badgeRecords] = await Promise.all([
+            profileIds.length > 0
+                ? ProfileLessonProgress.findAll({
+                      where: { profile_id: profileIds },
+                      attributes: ['profile_id', 'status', 'last_played_at'],
+                  })
+                : [],
+            profileIds.length > 0
+                ? ProfileBadge.findAll({
+                      where: { profile_id: profileIds },
+                      attributes: ['profile_id', 'id'],
+                  })
+                : [],
+        ])
+
+        // Lập maps thống kê nhanh O(1)
+        const completedCountMap = new Map<string, number>()
+        const lastActiveMap = new Map<string, Date>()
+        for (const pr of progressRecords) {
+            if (pr.status === 'completed') {
+                completedCountMap.set(pr.profile_id, (completedCountMap.get(pr.profile_id) || 0) + 1)
+            }
+            if (pr.last_played_at) {
+                const existing = lastActiveMap.get(pr.profile_id)
+                if (!existing || new Date(pr.last_played_at) > new Date(existing)) {
+                    lastActiveMap.set(pr.profile_id, pr.last_played_at)
+                }
+            }
+        }
+
+        const badgeCountMap = new Map<string, number>()
+        for (const br of badgeRecords) {
+            badgeCountMap.set(br.profile_id, (badgeCountMap.get(br.profile_id) || 0) + 1)
+        }
+
+        const AVATAR_FALLBACK_ICONS = ['🦁', '🦄', '🐼', '🐶', '🐱', '🦊', '🐯', '🐰']
+        const AVATAR_MAP: Record<string, string> = {
+            '/avatars/bunny.png': '🐰',
+            '/avatars/cat.png': '🐱',
+            '/avatars/lion.png': '🦁',
+            '/avatars/unicorn.png': '🦄',
+            '/avatars/panda.png': '🐼',
+            '/avatars/dog.png': '🐶',
+            '/avatars/fox.png': '🦊',
+            '/avatars/tiger.png': '🐯',
+        }
+
+        const result = users.map((u) => {
+            const userJson = u.toJSON() as any
             const rawProfiles = userJson.profiles || []
-            for (let i = 0; i < rawProfiles.length; i++) {
-                const p = rawProfiles[i]
-                const [completedCount, badgeCount, lastProgress] = await Promise.all([
-                    ProfileLessonProgress.count({
-                        where: { profile_id: p.id, status: 'completed' },
-                    }),
-                    ProfileBadge.count({
-                        where: { profile_id: p.id },
-                    }),
-                    ProfileLessonProgress.findOne({
-                        where: { profile_id: p.id },
-                        order: [['last_played_at', 'DESC']],
-                    }),
-                ])
+
+            const profilesList = rawProfiles.map((p: any, i: number) => {
+                const completedCount = completedCountMap.get(p.id) || 0
+                const badgeCount = badgeCountMap.get(p.id) || 0
+                const lastActive = lastActiveMap.get(p.id) || p.created_at
 
                 const resolvedAvatar =
                     p.avatar_url && AVATAR_FALLBACK_ICONS.includes(p.avatar_url)
@@ -101,21 +164,21 @@ class AdminService {
                             ? p.avatar_url
                             : AVATAR_FALLBACK_ICONS[i % AVATAR_FALLBACK_ICONS.length]
 
-                profilesList.push({
+                return {
                     id: p.id,
                     displayName: p.display_name,
                     avatarIcon: resolvedAvatar,
-                    grade: 1, // mặc định hoặc tính theo độ tuổi
+                    grade: 1,
                     birthDate: p.birth_date,
                     totalStars: p.total_stars || 0,
                     completedLessons: completedCount,
                     learningDays: Math.ceil(completedCount / 2) || 1,
                     badgeCount: badgeCount,
-                    lastActiveAt: lastProgress?.last_played_at || p.created_at,
-                })
-            }
+                    lastActiveAt: lastActive,
+                }
+            })
 
-            result.push({
+            return {
                 id: u.id,
                 email: u.email,
                 name: u.full_name || u.email.split('@')[0],
@@ -123,10 +186,22 @@ class AdminService {
                 status: (u.status === 'locked' ? 'suspended' : 'active') as 'active' | 'suspended',
                 hasPin: Boolean(u.pin_enabled || u.pin_hash),
                 profiles: profilesList,
-            })
-        }
+            }
+        })
 
-        return result
+        const totalPages = Math.ceil(count / limitNum)
+
+        return {
+            data: result,
+            pagination: {
+                total: count,
+                page: pageNum,
+                limit: limitNum,
+                totalPages: totalPages || 1,
+                hasNext: pageNum < totalPages,
+                hasPrev: pageNum > 1,
+            },
+        }
     }
 
     async toggleAccountStatus(userId: string) {
