@@ -7,6 +7,7 @@ import RedisStore from 'rate-limit-redis'
 import AuthController from '../app/controllers/AuthController'
 import { validate } from '../app/middlewares/validate'
 import {
+    changePinSchema,
     loginSchema,
     loginWithTokenSchema,
     pinSchema,
@@ -48,6 +49,7 @@ router.post('/logout', AuthController.logout)
 router.get('/me', verifyToken, AuthController.getCurrentUser)
 router.post('/pin/setup', verifyToken, validate(pinSchema), AuthController.setupPin)
 router.post('/pin/verify', verifyToken, validate(pinSchema), AuthController.verifyPin)
+router.post('/pin/change', verifyToken, validate(changePinSchema), AuthController.changePin)
 router.post('/loginwithtoken', validate(loginWithTokenSchema), AuthController.loginWithToken)
 router.get('/refresh', AuthController.refreshToken)
 router.post('/refresh', AuthController.refreshToken)

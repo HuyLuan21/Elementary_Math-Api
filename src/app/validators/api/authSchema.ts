@@ -35,6 +35,13 @@ export const pinSchema = z.object({
     }),
 })
 
+export const changePinSchema = z.object({
+    body: z.object({
+        oldPin: z.string().regex(/^\d{4}$/, 'Mã PIN cũ phải gồm chính xác 4 chữ số'),
+        newPin: z.string().regex(/^\d{4}$/, 'Mã PIN mới phải gồm chính xác 4 chữ số'),
+    }),
+})
+
 export const sendVerifyCodeSchema = z.object({
     body: z.object({
         email: emailSchema,
@@ -78,6 +85,7 @@ export type RegisterRequest = TypedRequest<z.infer<typeof registerSchema>['body'
 export type LoginRequest = TypedRequest<z.infer<typeof loginSchema>['body']>
 export type LoginWithTokenRequest = TypedRequest<z.infer<typeof loginWithTokenSchema>['body']>
 export type PinRequest = TypedRequest<z.infer<typeof pinSchema>['body']>
+export type ChangePinRequest = TypedRequest<z.infer<typeof changePinSchema>['body']>
 export type SendVerifyCodeRequest = TypedRequest<z.infer<typeof sendVerifyCodeSchema>['body']>
 export type sendResetPassEmailRequest = TypedRequest<z.infer<typeof sendResetPassEmailSchema>['body']>
 export type ResetPassRequest = TypedRequest<z.infer<typeof resetPassSchema>['body']>

@@ -1,15 +1,12 @@
 import { NextFunction, Request, Response } from 'express'
 
-import {
-    BadRequestError,
-    NotFoundError,
-    UnauthorizedError,
-} from '../errors/errors'
+import { BadRequestError, NotFoundError, UnauthorizedError } from '../errors/errors'
 import { User } from '../models'
 import AuthService from '../services/AuthService'
 import UserService from '../services/UserService'
 import { clearCookie, setCookie } from '../utils/cookiesManager'
 import {
+    ChangePinRequest,
     LoginRequest,
     LoginWithTokenRequest,
     PinRequest,
@@ -25,11 +22,7 @@ import { IRequest } from '~/type'
 
 class AuthController {
     // [GET] /auth/me
-    getCurrentUser = async (
-        req: IRequest,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    getCurrentUser = async (req: IRequest, res: Response, next: NextFunction) => {
         try {
             const userId = req.decoded?.sub
 
@@ -101,18 +94,11 @@ class AuthController {
     }
 
     // [POST] /auth/register
-    register = async (
-        req: RegisterRequest,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    register = async (req: RegisterRequest, res: Response, next: NextFunction) => {
         try {
             const { full_name, email, password } = req.body
 
-            const {
-                user,
-                auth_challenge_id,
-            } = await AuthService.register({
+            const { user, auth_challenge_id } = await AuthService.register({
                 full_name,
                 email,
                 password,
@@ -132,19 +118,11 @@ class AuthController {
     }
 
     // [POST] /auth/login
-    login = async (
-        req: LoginRequest,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    login = async (req: LoginRequest, res: Response, next: NextFunction) => {
         try {
             const { email, password } = req.body
 
-            const {
-                token,
-                refreshToken,
-                user,
-            } = await AuthService.login({
+            const { token, refreshToken, user } = await AuthService.login({
                 email,
                 password,
             })
@@ -162,11 +140,7 @@ class AuthController {
     }
 
     // [POST] /auth/pin/setup
-    setupPin = async (
-        req: PinRequest,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    setupPin = async (req: PinRequest, res: Response, next: NextFunction) => {
         try {
             const userId = req.decoded?.sub
 
@@ -187,11 +161,7 @@ class AuthController {
     }
 
     // [POST] /auth/pin/verify
-    verifyPin = async (
-        req: PinRequest,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    verifyPin = async (req: PinRequest, res: Response, next: NextFunction) => {
         try {
             const userId = req.decoded?.sub
 
@@ -209,24 +179,40 @@ class AuthController {
         }
     }
 
+    // [POST] /auth/pin/change
+    changePin = async (req: ChangePinRequest, res: Response, next: NextFunction) => {
+        try {
+            const userId = req.decoded?.sub
+
+            if (!userId) {
+                return next(new UnauthorizedError({ message: 'Token không hợp lệ hoặc đã hết hạn' }))
+            }
+
+            const result = await AuthService.changePin({
+                userId,
+                oldPin: req.body.oldPin,
+                newPin: req.body.newPin,
+            })
+
+            res.status(200).json({
+                message: 'Đổi mã PIN thành công',
+                data: result,
+            })
+        } catch (error) {
+            return next(error)
+        }
+    }
+
     // [POST] /auth/logout
-    logout = async (
-        req: IRequest,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    logout = async (req: IRequest, res: Response, next: NextFunction) => {
         try {
             const authHeader = req.headers.authorization
 
             const access_token =
                 req.cookies?.access_token ||
-                (authHeader?.startsWith('Bearer ')
-                    ? authHeader.split(' ')[1]
-                    : req.body?.access_token)
+                (authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : req.body?.access_token)
 
-            const refresh_token =
-                req.cookies?.refresh_token ||
-                req.body?.refresh_token
+            const refresh_token = req.cookies?.refresh_token || req.body?.refresh_token
 
             await AuthService.logout({
                 access_token,
@@ -246,11 +232,7 @@ class AuthController {
     }
 
     // [POST] /auth/loginwithtoken
-    loginWithToken = async (
-        req: LoginWithTokenRequest,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    loginWithToken = async (req: LoginWithTokenRequest, res: Response, next: NextFunction) => {
         try {
             const { token } = req.body
 
@@ -275,21 +257,12 @@ class AuthController {
     }
 
     // [GET/POST] /auth/refresh
-    refreshToken = async (
-        req: Request,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    refreshToken = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const refresh_token =
-                req.cookies?.refresh_token ||
-                req.body?.refresh_token ||
-                (req.headers['x-refresh-token'] as string)
+                req.cookies?.refresh_token || req.body?.refresh_token || (req.headers['x-refresh-token'] as string)
 
-            const {
-                newAccessToken,
-                newRefreshToken,
-            } = await AuthService.refreshToken({
+            const { newAccessToken, newRefreshToken } = await AuthService.refreshToken({
                 refresh_token,
             })
 
@@ -326,11 +299,7 @@ class AuthController {
     }
 
     // [GET] /auth/verification/send
-    sendVerifyCode = async (
-        req: SendVerifyCodeRequest,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    sendVerifyCode = async (req: SendVerifyCodeRequest, res: Response, next: NextFunction) => {
         try {
             const { email } = req.body
 
@@ -351,8 +320,7 @@ class AuthController {
             if (user.status === 'active') {
                 return next(
                     new BadRequestError({
-                        message:
-                            'Tài khoản đã được xác thực',
+                        message: 'Tài khoản đã được xác thực',
                     }),
                 )
             }
@@ -369,11 +337,7 @@ class AuthController {
     }
 
     // [GET] /auth/forgot-password
-    sendResetPassEmail = async (
-        req: sendResetPassEmailRequest,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    sendResetPassEmail = async (req: sendResetPassEmailRequest, res: Response, next: NextFunction) => {
         try {
             const { email } = req.body
 
@@ -402,17 +366,9 @@ class AuthController {
     }
 
     // [POST] /auth/reset-password
-    resetPassword = async (
-        req: ResetPassRequest,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    resetPassword = async (req: ResetPassRequest, res: Response, next: NextFunction) => {
         try {
-            const {
-                email,
-                token,
-                password,
-            } = req.body
+            const { email, token, password } = req.body
 
             await AuthService.resetPassword({
                 email,
@@ -421,8 +377,7 @@ class AuthController {
             })
 
             res.json({
-                message:
-                    'Password reset successfully',
+                message: 'Password reset successfully',
             })
         } catch (error) {
             return next(error)
@@ -430,19 +385,11 @@ class AuthController {
     }
 
     // [POST] /auth/verification/active
-    verifyAccount = async (
-        req: VerifyAccountRequest,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    verifyAccount = async (req: VerifyAccountRequest, res: Response, next: NextFunction) => {
         try {
             const { email, code } = req.body
 
-            const {
-                token,
-                refreshToken,
-                user,
-            } = await AuthService.verifyAccount({
+            const { token, refreshToken, user } = await AuthService.verifyAccount({
                 email,
                 code,
             })
@@ -468,8 +415,7 @@ class AuthController {
             })
 
             res.status(200).json({
-                message:
-                    'Account verified successfully',
+                message: 'Account verified successfully',
             })
         } catch (error) {
             return next(error)
@@ -477,20 +423,15 @@ class AuthController {
     }
 
     // [GET] /auth/verification/challenge/:auth_challenge_id
-    verifyAuthChallengeId = async (
-        req: VerifyAuthChallengeIdRequest,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    verifyAuthChallengeId = async (req: VerifyAuthChallengeIdRequest, res: Response, next: NextFunction) => {
         try {
             const { auth_challenge_id } = req.params
             const { email } = req.query
 
-            const payload =
-                await AuthService.verifyAuthChallengeId({
-                    auth_challenge_id,
-                    email: email as string,
-                })
+            const payload = await AuthService.verifyAuthChallengeId({
+                auth_challenge_id,
+                email: email as string,
+            })
 
             res.json({
                 data: payload,
@@ -501,16 +442,9 @@ class AuthController {
     }
 
     // [POST] /auth/forgot-password/verify
-    verifyForgotPasswordToken = async (
-        req: VerifyForgotPasswordTokenRequest,
-        res: Response,
-        next: NextFunction,
-    ) => {
+    verifyForgotPasswordToken = async (req: VerifyForgotPasswordTokenRequest, res: Response, next: NextFunction) => {
         try {
-            const {
-                token,
-                email,
-            } = req.body
+            const { token, email } = req.body
 
             await AuthService.verifyForgotPasswordToken({
                 token,

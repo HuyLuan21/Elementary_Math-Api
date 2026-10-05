@@ -239,6 +239,47 @@ class AuthServices {
         }
     }
 
+    changePin = async ({ userId, oldPin, newPin }: { userId: string; oldPin: string; newPin: string }) => {
+        try {
+            const user = await User.unscoped().findByPk(userId, {
+                attributes: ['id', 'pin_enabled', 'pin_hash'],
+            })
+
+            if (!user) {
+                throw new UnauthorizedError({
+                    message: 'Tài khoản không tồn tại',
+                    error: { code: 'TOKEN_VERIFICATION_FAILED' },
+                })
+            }
+
+            if (!user.pin_enabled || !user.pin_hash) {
+                throw new ConflictError({
+                    message: 'PIN chưa được thiết lập',
+                    error: { code: 'PIN_NOT_SET' },
+                })
+            }
+
+            const isOldPinValid = await bcrypt.compare(oldPin, user.pin_hash)
+
+            if (!isOldPinValid) {
+                throw new UnauthorizedError({
+                    message: 'Mã PIN hiện tại không chính xác',
+                    error: { code: 'OLD_PIN_INVALID' },
+                })
+            }
+
+            const newPinHash = await hashValue(newPin)
+            await user.update({
+                pin_hash: newPinHash,
+                pin_enabled: true,
+            })
+
+            return { success: true }
+        } catch (error: any) {
+            return handleServiceError(error)
+        }
+    }
+
     // Đăng xuất
     logout = async ({ access_token, refresh_token }: { access_token?: string; refresh_token?: string }) => {
         try {

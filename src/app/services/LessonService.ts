@@ -1,4 +1,13 @@
-import { Badge, Chapter, Lesson, Profile, ProfileBadge, ProfileLessonProgress, ProfileSticker, Question, Sticker } from '../models'
+import {
+    Badge,
+    Chapter,
+    Lesson,
+    Profile,
+    ProfileBadge,
+    ProfileLessonProgress,
+    Question,
+    Sticker,
+} from '../models'
 
 const LABEL_TRANSLATIONS: Record<string, string> = {
     red: 'Màu đỏ 🔴',
@@ -54,9 +63,7 @@ class LessonService {
 
         const allLessons: Lesson[] = []
         for (const chap of allChapters) {
-            const sortedLessons = ((chap as any).lessons || []).sort(
-                (a: any, b: any) => a.order_index - b.order_index,
-            )
+            const sortedLessons = ((chap as any).lessons || []).sort((a: any, b: any) => a.order_index - b.order_index)
             allLessons.push(...sortedLessons)
         }
 
@@ -84,7 +91,10 @@ class LessonService {
     }
 
     // 1. Kiểm tra bài học có được phép truy cập hay không
-    async isLessonUnlocked(lessonId: string, profileId?: string): Promise<{ isUnlocked: boolean; reason?: string; lesson?: Lesson }> {
+    async isLessonUnlocked(
+        lessonId: string,
+        profileId?: string,
+    ): Promise<{ isUnlocked: boolean; reason?: string; lesson?: Lesson }> {
         const { lesson, allLessons, index: currIndex } = await this.resolveLesson(lessonId)
         if (!lesson || currIndex === -1) {
             return { isUnlocked: false, reason: 'Không tìm thấy bài học trong chương trình học' }
@@ -185,7 +195,7 @@ class LessonService {
             throw new Error('Không tìm thấy bài học')
         }
 
-        const lessonJson = lesson.toJSON()
+        const lessonJson: any = lesson.toJSON()
         const sortedQuestions = (lessonJson.questions || []).sort((a: any, b: any) => a.order_index - b.order_index)
 
         const formattedQuestions = sortedQuestions.map((q: any) => {
@@ -193,14 +203,18 @@ class LessonService {
             if (typeof content === 'string') {
                 try {
                     content = JSON.parse(content)
-                } catch (e) {}
+                } catch (_e) {
+                    // Ignore parse error
+                }
             }
 
             let rawOptions = q.options_json
             if (typeof rawOptions === 'string') {
                 try {
                     rawOptions = JSON.parse(rawOptions)
-                } catch (e) {}
+                } catch (_e) {
+                    // Ignore parse error
+                }
             }
 
             // Chuẩn hóa Options thành format { id, label }
@@ -358,9 +372,7 @@ class LessonService {
 
         const allLessonsSequence: Lesson[] = []
         for (const chap of allChapters) {
-            const sortedLessons = ((chap as any).lessons || []).sort(
-                (a: any, b: any) => a.order_index - b.order_index,
-            )
+            const sortedLessons = ((chap as any).lessons || []).sort((a: any, b: any) => a.order_index - b.order_index)
             allLessonsSequence.push(...sortedLessons)
         }
 
@@ -382,19 +394,6 @@ class LessonService {
             }
         }
 
-        // Tự động trao Sticker phần thưởng của bài học (nếu có)
-        if (targetLesson.reward_sticker_id) {
-            await ProfileSticker.findOrCreate({
-                where: { profile_id: profileId, sticker_id: targetLesson.reward_sticker_id },
-                defaults: {
-                    profile_id: profileId,
-                    sticker_id: targetLesson.reward_sticker_id,
-                    unlocked_at: now,
-                    is_seen: false,
-                },
-            })
-        }
-
         // Tự động trao Huy hiệu (Badges)
         // 1. Huy hiệu bài học đầu tiên (FIRST_LESSON)
         if (allProgress.length >= 1) {
@@ -414,7 +413,9 @@ class LessonService {
 
         // 2. Huy hiệu hoàn thành 10 bài học (TEN_LESSONS)
         if (allProgress.length >= 10) {
-            const tenBadge = await Badge.findOne({ where: { condition_type: 'lessons_completed', condition_value: 10, is_active: true } })
+            const tenBadge = await Badge.findOne({
+                where: { condition_type: 'lessons_completed', condition_value: 10, is_active: true },
+            })
             if (tenBadge) {
                 await ProfileBadge.findOrCreate({
                     where: { profile_id: profileId, badge_id: tenBadge.id },
@@ -429,7 +430,7 @@ class LessonService {
         }
 
         // 3. Huy hiệu hoàn thành từng chặng/chương (CHAPTER_COMPLETED)
-        if (targetLesson.chapter_id) {
+        if (targetLesson && targetLesson.chapter_id) {
             const chapterLessons = await Lesson.findAll({
                 where: { chapter_id: targetLesson.chapter_id, is_published: true },
             })
