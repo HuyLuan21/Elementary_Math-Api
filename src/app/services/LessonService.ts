@@ -5,6 +5,7 @@ import {
     Profile,
     ProfileBadge,
     ProfileLessonProgress,
+    ProfileSticker,
     Question,
     Sticker,
 } from '../models'
@@ -33,6 +34,23 @@ const LABEL_TRANSLATIONS: Record<string, string> = {
     go_to_school: 'Đi học 🎒',
     have_breakfast: 'Ăn sáng 🥞',
     breakfast: 'Ăn sáng 🥞',
+}
+
+const COLOR_MAP: Record<string, { name: string; hex: string; emoji: string }> = {
+    red: { name: 'Màu đỏ', hex: '#EF4444', emoji: '🔴' },
+    blue: { name: 'Màu xanh dương', hex: '#3B82F6', emoji: '🔵' },
+    yellow: { name: 'Màu vàng', hex: '#F59E0B', emoji: '🟡' },
+    green: { name: 'Màu xanh lá', hex: '#10B981', emoji: '🟢' },
+}
+
+const SHAPE_MAP: Record<
+    string,
+    { name: string; shape: 'circle' | 'square' | 'triangle' | 'rectangle'; emoji: string; color: string }
+> = {
+    circle: { name: 'Hình tròn', shape: 'circle', emoji: '⭕', color: '#38BDF8' },
+    square: { name: 'Hình vuông', shape: 'square', emoji: '🔲', color: '#FBBF24' },
+    triangle: { name: 'Hình tam giác', shape: 'triangle', emoji: '🔺', color: '#F87171' },
+    rectangle: { name: 'Hình chữ nhật', shape: 'rectangle', emoji: '▭', color: '#A78BFA' },
 }
 
 const EMOJI_MAP: Record<string, string> = {
@@ -203,7 +221,7 @@ class LessonService {
             if (typeof content === 'string') {
                 try {
                     content = JSON.parse(content)
-                } catch (_e) {
+                } catch (_) {
                     // Ignore parse error
                 }
             }
@@ -212,7 +230,7 @@ class LessonService {
             if (typeof rawOptions === 'string') {
                 try {
                     rawOptions = JSON.parse(rawOptions)
-                } catch (_e) {
+                } catch (_) {
                     // Ignore parse error
                 }
             }
@@ -252,27 +270,166 @@ class LessonService {
                     (typeof content.left === 'string' ? EMOJI_MAP[content.left] || '🍎' : '🍎')
                 const rightEmoji = typeof content.right === 'string' ? EMOJI_MAP[content.right] || itemEmoji : itemEmoji
 
+                const leftCount = typeof content.left === 'number' ? content.left : 1
+                const rightCount = typeof content.right === 'number' ? content.right : 1
+
                 compareLeft = {
-                    count: typeof content.left === 'number' ? content.left : 1,
+                    count: leftCount,
                     icon: itemEmoji,
+                    items: typeof content.left === 'number' ? Array(leftCount).fill(itemEmoji) : [itemEmoji],
                     label:
                         typeof content.left === 'string'
                             ? LABEL_TRANSLATIONS[content.left] || content.left
-                            : `${content.left}`,
+                            : `${leftCount}`,
                 }
                 compareRight = {
-                    count: typeof content.right === 'number' ? content.right : 1,
+                    count: rightCount,
                     icon: rightEmoji,
+                    items: typeof content.right === 'number' ? Array(rightCount).fill(rightEmoji) : [rightEmoji],
                     label:
                         typeof content.right === 'string'
                             ? LABEL_TRANSLATIONS[content.right] || content.right
-                            : `${content.right}`,
+                            : `${rightCount}`,
                 }
             }
 
-            let type: 'count' | 'equation' | 'compare' = 'count'
-            if (q.question_type === 'comparison') type = 'compare'
-            else if (q.question_type === 'counting') type = 'count'
+            let numberedCards: Array<{
+                index: number
+                label: string
+                color: string
+                name?: string
+                shape?: 'circle' | 'square' | 'triangle' | 'rectangle'
+                emoji?: string
+            }> | null = null
+
+            let clockTime: { hour: number; minute: number } | null = null
+
+            let type: 'count' | 'equation' | 'compare' | 'color_choice' | 'shape_choice' | 'time' | 'image_choice' =
+                'count'
+            let correctAnswerId = String(q.correct_answer || '')
+            let explanation = `Đáp án chính xác là: ${LABEL_TRANSLATIONS[q.correct_answer] || q.correct_answer}`
+
+            const textLower = (q.question_text || '').toLowerCase()
+            const isObjectColorQuestion =
+                content?.image ||
+                textLower.includes('quả táo') ||
+                textLower.includes('mặt trời') ||
+                textLower.includes('lá cây') ||
+                textLower.includes('bầu trời')
+
+            if (q.question_type === 'color_choice' || q.skill_tag === 'color') {
+                type = 'color_choice'
+                if (isObjectColorQuestion) {
+                    // 1. Nhận biết màu sắc của đồ vật cụ thể (Quả táo, mặt trời, lá cây...)
+                    let objectEmoji = '🍎'
+                    if (textLower.includes('mặt trời')) objectEmoji = '☀️'
+                    else if (textLower.includes('lá cây')) objectEmoji = '🍃'
+                    else if (textLower.includes('bầu trời')) objectEmoji = '☁️'
+                    else if (content?.image?.includes('apple')) objectEmoji = '🍎'
+
+                    visualItems = [objectEmoji]
+                    numberedCards = null
+                    correctAnswerId = String(q.correct_answer || 'red')
+                    formattedOptions = (rawOptions || []).map((opt: string) => ({
+                        id: String(opt),
+                        label: LABEL_TRANSLATIONS[opt] || opt,
+                        icon: COLOR_MAP[opt]?.emoji || '🎨',
+                    }))
+                    explanation = `Đồ vật/quả này có ${LABEL_TRANSLATIONS[q.correct_answer] || q.correct_answer}`
+                } else {
+                    // 2. Chọn hình có màu sắc theo yêu cầu ("Màu đỏ là màu nào?", "Hình nào có màu xanh?")
+                    if (
+                        Array.isArray(rawOptions) &&
+                        rawOptions.length > 0 &&
+                        typeof rawOptions[0] === 'string' &&
+                        COLOR_MAP[rawOptions[0]]
+                    ) {
+                        numberedCards = rawOptions.map((colorKey: string, idx: number) => {
+                            const colorInfo = COLOR_MAP[colorKey] || { name: colorKey, hex: '#4DA8DA', emoji: '🎨' }
+                            return {
+                                index: idx + 1,
+                                label: `Hình ${idx + 1}`,
+                                color: colorInfo.hex,
+                                name: colorInfo.name,
+                                shape: (idx % 2 === 0 ? 'circle' : 'square') as 'circle' | 'square',
+                                emoji: colorInfo.emoji,
+                            }
+                        })
+
+                        const correctIdx = rawOptions.findIndex(
+                            (opt: string) => String(opt).toLowerCase() === String(q.correct_answer).toLowerCase(),
+                        )
+                        if (correctIdx !== -1) {
+                            correctAnswerId = String(correctIdx + 1)
+                            explanation = `Đáp án đúng là Hình ${correctAnswerId} (${LABEL_TRANSLATIONS[q.correct_answer] || q.correct_answer})`
+                        }
+
+                        formattedOptions = rawOptions.map((_opt: string, idx: number) => ({
+                            id: String(idx + 1),
+                            label: `Hình ${idx + 1}`,
+                        }))
+                    }
+                }
+            } else if (q.question_type === 'shape_choice' || q.skill_tag === 'shape') {
+                type = 'shape_choice'
+                if (
+                    Array.isArray(rawOptions) &&
+                    rawOptions.length > 0 &&
+                    typeof rawOptions[0] === 'string' &&
+                    SHAPE_MAP[rawOptions[0]]
+                ) {
+                    numberedCards = rawOptions.map((shapeKey: string, idx: number) => {
+                        const shapeInfo = SHAPE_MAP[shapeKey] || {
+                            name: shapeKey,
+                            shape: 'circle',
+                            emoji: '📐',
+                            color: '#4DA8DA',
+                        }
+                        return {
+                            index: idx + 1,
+                            label: `Hình ${idx + 1}`,
+                            color: shapeInfo.color,
+                            name: shapeInfo.name,
+                            shape: shapeInfo.shape,
+                            emoji: shapeInfo.emoji,
+                        }
+                    })
+
+                    const correctIdx = rawOptions.findIndex(
+                        (opt: string) => String(opt).toLowerCase() === String(q.correct_answer).toLowerCase(),
+                    )
+                    if (correctIdx !== -1) {
+                        correctAnswerId = String(correctIdx + 1)
+                        explanation = `Đáp án đúng là Hình ${correctAnswerId} (${LABEL_TRANSLATIONS[q.correct_answer] || q.correct_answer})`
+                    }
+
+                    formattedOptions = rawOptions.map((_opt: string, idx: number) => ({
+                        id: String(idx + 1),
+                        label: `Hình ${idx + 1}`,
+                    }))
+                }
+            } else if (q.question_type === 'time' || content?.hour !== undefined || q.skill_tag === 'time') {
+                if (content?.hour !== undefined || String(q.correct_answer).includes(':')) {
+                    type = 'time'
+                    let hour = content?.hour
+                    if (hour === undefined && typeof q.correct_answer === 'string') {
+                        const match = q.correct_answer.match(/(\d+)/)
+                        if (match) hour = parseInt(match[1], 10)
+                    }
+                    clockTime = {
+                        hour: Number(hour || 3),
+                        minute: Number(content?.minute || 0),
+                    }
+                    correctAnswerId = String(q.correct_answer || '3:00')
+                    explanation = `Kim đồng hồ đang chỉ ${correctAnswerId}`
+                } else {
+                    type = 'image_choice'
+                }
+            } else if (q.question_type === 'comparison') {
+                type = 'compare'
+            } else if (q.question_type === 'counting') {
+                type = 'count'
+            }
 
             return {
                 id: q.id,
@@ -282,9 +439,11 @@ class LessonService {
                 visualFormula: content?.visual_formula || null,
                 compareLeft,
                 compareRight,
+                numberedCards,
+                clockTime,
                 options: formattedOptions,
-                correctAnswerId: String(q.correct_answer || ''),
-                explanation: `Đáp án chính xác là: ${LABEL_TRANSLATIONS[q.correct_answer] || q.correct_answer}`,
+                correctAnswerId,
+                explanation,
                 skillTag: q.skill_tag,
             }
         })
@@ -459,12 +618,109 @@ class LessonService {
             }
         }
 
+        // 4. Huy hiệu chuỗi ngày học liên tục (STREAK BADGES)
+        const uniqueLearningDates = new Set<string>()
+        for (const p of allProgress) {
+            const dateVal = p.last_played_at || p.first_completed_at || (p as any).updated_at
+            if (dateVal) {
+                const d = new Date(dateVal)
+                const yyyyMmDd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+                uniqueLearningDates.add(yyyyMmDd)
+            }
+        }
+
+        // Tính chuỗi ngày liên tiếp lùi từ hôm nay
+        let streakDays = 0
+        const checkDate = new Date(now)
+        while (true) {
+            const checkStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`
+            if (uniqueLearningDates.has(checkStr)) {
+                streakDays++
+                checkDate.setDate(checkDate.getDate() - 1)
+            } else {
+                break
+            }
+        }
+
+        if (streakDays > 0) {
+            const streakBadges = await Badge.findAll({
+                where: {
+                    condition_type: 'streak',
+                    is_active: true,
+                },
+            })
+
+            for (const sBadge of streakBadges) {
+                const reqStreak = sBadge.condition_value || 1
+                if (streakDays >= reqStreak) {
+                    await ProfileBadge.findOrCreate({
+                        where: { profile_id: profileId, badge_id: sBadge.id },
+                        defaults: {
+                            profile_id: profileId,
+                            badge_id: sBadge.id,
+                            earned_at: now,
+                            is_seen: false,
+                        },
+                    })
+                }
+            }
+        }
+
+        // 4. Tự động trao Sticker khi hoàn thành xuất sắc bài học (3 sao)
+        let awardedSticker: {
+            id: string
+            code: string
+            name: string
+            description: string | null
+            image_url: string | null
+            isNew: boolean
+        } | null = null
+
+        if (starsEarned === 3) {
+            let stickerId: string | null | undefined = targetLesson ? (targetLesson as any).reward_sticker_id : null
+            if (!stickerId) {
+                const allStickers = await Sticker.findAll({
+                    where: { is_active: true },
+                    order: [['order_index', 'ASC']],
+                })
+                if (allStickers.length > 0) {
+                    const fallbackIndex = Math.min(currIndex >= 0 ? currIndex : 0, allStickers.length - 1)
+                    stickerId = allStickers[fallbackIndex].id
+                }
+            }
+
+            if (stickerId) {
+                const [_, isNew] = await ProfileSticker.findOrCreate({
+                    where: { profile_id: profileId, sticker_id: stickerId },
+                    defaults: {
+                        profile_id: profileId,
+                        sticker_id: stickerId,
+                        unlocked_at: now,
+                        is_seen: false,
+                    },
+                })
+
+                const stickerInfo = await Sticker.findByPk(stickerId)
+                if (stickerInfo) {
+                    awardedSticker = {
+                        id: stickerInfo.id,
+                        code: stickerInfo.code,
+                        name: stickerInfo.name,
+                        description: stickerInfo.description,
+                        image_url: stickerInfo.image_url,
+                        isNew: isNew,
+                    }
+                }
+            }
+        }
+
         return {
             score,
             starsEarned,
             totalStars,
             correctCount,
             totalQuestions,
+            awardedSticker,
         }
     }
 }

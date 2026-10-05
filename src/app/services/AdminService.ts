@@ -95,11 +95,11 @@ class AdminService {
                 const resolvedAvatar =
                     p.avatar_url && AVATAR_FALLBACK_ICONS.includes(p.avatar_url)
                         ? p.avatar_url
-                        : (p.avatar_url && AVATAR_MAP[p.avatar_url])
-                            ? AVATAR_MAP[p.avatar_url]
-                            : (p.avatar_url && (p.avatar_url.startsWith('http') || p.avatar_url.startsWith('data:')))
-                                ? p.avatar_url
-                                : AVATAR_FALLBACK_ICONS[i % AVATAR_FALLBACK_ICONS.length]
+                        : p.avatar_url && AVATAR_MAP[p.avatar_url]
+                          ? AVATAR_MAP[p.avatar_url]
+                          : p.avatar_url && (p.avatar_url.startsWith('http') || p.avatar_url.startsWith('data:'))
+                            ? p.avatar_url
+                            : AVATAR_FALLBACK_ICONS[i % AVATAR_FALLBACK_ICONS.length]
 
                 profilesList.push({
                     id: p.id,

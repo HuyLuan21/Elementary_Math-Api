@@ -84,7 +84,9 @@ class AuthController {
             req,
         })
 
-        const { password_hash: _passwordHash, pin_hash: _pinHash, ...userData } = user.toJSON()
+        const userData = user.toJSON()
+        delete (userData as any).password_hash
+        delete (userData as any).pin_hash
 
         res.status(status).json({
             data: userData,

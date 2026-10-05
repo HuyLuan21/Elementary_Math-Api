@@ -35,7 +35,15 @@ const corsOptions: cors.CorsOptions = {
         }
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-requested-with', 'Accept'],
+    allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-Requested-With',
+        'x-requested-with',
+        'Accept',
+        'x-refresh-token',
+        'X-Refresh-Token',
+    ],
     exposedHeaders: ['X-Refresh-Token-Required', 'x-refresh-token-required'],
     credentials: true,
     maxAge: 86400,
