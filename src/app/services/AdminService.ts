@@ -262,6 +262,7 @@ class AdminService {
             description: c.description || '',
             grade: 1,
             orderNumber: c.order_index,
+            rewardBadgeId: c.reward_badge_id || null,
             status: (c.is_published ? 'published' : 'draft') as 'published' | 'draft',
             lessons: (c.lessons || []).map((l: any) => ({
                 id: l.id,
@@ -300,8 +301,18 @@ class AdminService {
                     title: data.title || chapter.title,
                     description: data.description !== undefined ? data.description : chapter.description,
                     is_published: data.status ? data.status === 'published' : chapter.is_published,
+                    reward_badge_id: data.rewardBadgeId !== undefined ? data.rewardBadgeId : chapter.reward_badge_id,
                 })
-                return chapter
+                return {
+                    id: chapter.id,
+                    title: chapter.title,
+                    description: chapter.description || '',
+                    grade: 1,
+                    orderNumber: chapter.order_index,
+                    rewardBadgeId: chapter.reward_badge_id || null,
+                    status: (chapter.is_published ? 'published' : 'draft') as 'published' | 'draft',
+                    lessons: [],
+                }
             }
         }
 
@@ -311,9 +322,19 @@ class AdminService {
             description: data.description || null,
             order_index: count + 1,
             is_published: data.status ? data.status === 'published' : true,
+            reward_badge_id: data.rewardBadgeId || null,
         })
 
-        return newChapter
+        return {
+            id: newChapter.id,
+            title: newChapter.title,
+            description: newChapter.description || '',
+            grade: 1,
+            orderNumber: newChapter.order_index,
+            rewardBadgeId: newChapter.reward_badge_id || null,
+            status: (newChapter.is_published ? 'published' : 'draft') as 'published' | 'draft',
+            lessons: [],
+        }
     }
 
     async deleteChapter(chapterId: string) {
@@ -387,16 +408,26 @@ class AdminService {
     }
 
     async getBadges() {
-        const badges = await Badge.findAll({
-            order: [['created_at', 'ASC']],
-            include: [
-                {
-                    model: ProfileBadge,
-                    as: 'profileBadges',
-                    attributes: ['id'],
-                },
-            ],
-        })
+        const [badges, chapterBadges] = await Promise.all([
+            Badge.findAll({
+                order: [['created_at', 'ASC']],
+                include: [
+                    {
+                        model: ProfileBadge,
+                        as: 'profileBadges',
+                        attributes: ['id'],
+                    },
+                ],
+            }),
+            Chapter.findAll({
+                attributes: ['id', 'title', 'reward_badge_id'],
+                where: { reward_badge_id: { [Op.ne]: null } },
+            }),
+        ])
+
+        const chapterBadgeMap = new Map(
+            chapterBadges.map((c: any) => [c.reward_badge_id, { id: c.id, title: c.title }])
+        )
 
         const BADGE_MAP: Record<string, string> = {
             '/badges/first-lesson.png': '🚀',
@@ -411,26 +442,50 @@ class AdminService {
             '/badges/hundred-stars.png': '⭐',
         }
 
-        return badges.map((b: any) => ({
-            id: b.id,
-            name: b.name,
-            description: b.description || '',
-            icon: (b.image_url && BADGE_MAP[b.image_url]) || b.image_url || '🎖️',
-            category:
-                b.condition_type === 'streak' ? 'streak' : b.condition_type === 'first_lesson' ? 'special' : 'lesson',
-            requiredCount: b.condition_value || 1,
-            requiredMetric: 'completed_lessons',
-            rewardPoints: (b.condition_value || 1) * 10,
-            rarity: (b.condition_value && b.condition_value > 10
-                ? 'legendary'
-                : b.condition_value && b.condition_value > 5
-                  ? 'rare'
-                  : 'common') as any,
-            unlockedCount: b.profileBadges ? b.profileBadges.length : 0,
-        }))
+        return badges.map((b: any) => {
+            const linkedChapter = chapterBadgeMap.get(b.id)
+            const isChapterBadge = b.condition_type === 'chapter_completed' || !!linkedChapter
+            return {
+                id: b.id,
+                name: b.name,
+                description: b.description || '',
+                icon: (b.image_url && BADGE_MAP[b.image_url]) || b.image_url || '🎖️',
+                conditionType: b.condition_type,
+                category: isChapterBadge
+                    ? 'chapter'
+                    : b.condition_type === 'first_lesson'
+                      ? 'special'
+                      : b.condition_type === 'streak'
+                        ? 'streak'
+                        : 'lesson',
+                chapterId: linkedChapter?.id || null,
+                chapterTitle: linkedChapter?.title || null,
+                requiredCount: b.condition_value || (b.condition_type === 'first_lesson' ? 1 : 0),
+                requiredMetric:
+                    b.condition_type === 'streak'
+                        ? 'learning_days'
+                        : isChapterBadge
+                          ? 'chapter'
+                          : 'completed_lessons',
+                rewardPoints: (b.condition_value || 1) * 10,
+                unlockedCount: b.profileBadges ? b.profileBadges.length : 0,
+            }
+        })
     }
 
     async saveBadge(data: any) {
+        const conditionType =
+            data.conditionType ||
+            (data.category === 'chapter'
+                ? 'chapter_completed'
+                : data.category === 'special'
+                  ? 'first_lesson'
+                  : data.category === 'streak'
+                    ? 'streak'
+                    : 'lessons_completed')
+
+        let savedBadge: any
+
         if (data.id) {
             const badge = await Badge.findByPk(data.id)
             if (badge) {
@@ -438,24 +493,37 @@ class AdminService {
                     name: data.name || badge.name,
                     description: data.description !== undefined ? data.description : badge.description,
                     image_url: data.icon || badge.image_url,
-                    condition_value: data.requiredCount || badge.condition_value,
+                    condition_type: conditionType,
+                    condition_value: data.requiredCount !== undefined ? data.requiredCount : badge.condition_value,
                 })
-                return badge
+                savedBadge = badge
             }
         }
 
-        const code = `badge_${Date.now()}`
-        const newBadge = await Badge.create({
-            code,
-            name: data.name,
-            description: data.description || null,
-            image_url: data.icon || '🎖️',
-            condition_type: data.category === 'streak' ? 'streak' : 'lessons_completed',
-            condition_value: data.requiredCount || 1,
-            is_active: true,
-        })
+        if (!savedBadge) {
+            const code = `badge_${Date.now()}`
+            savedBadge = await Badge.create({
+                code,
+                name: data.name,
+                description: data.description || null,
+                image_url: data.icon || '🎖️',
+                condition_type: conditionType,
+                condition_value: data.requiredCount || (conditionType === 'first_lesson' ? 1 : null),
+                is_active: true,
+            })
+        }
 
-        return newBadge
+        // Xử lý liên kết với chương học
+        if (data.category === 'chapter' && data.chapterId) {
+            // Gỡ bỏ liên kết cũ của badge này ở các chương khác
+            await Chapter.update({ reward_badge_id: null }, { where: { reward_badge_id: savedBadge.id } })
+            // Gán huy hiệu cho chương được chọn
+            await Chapter.update({ reward_badge_id: savedBadge.id }, { where: { id: data.chapterId } })
+        } else if (data.category !== 'chapter' && savedBadge.id) {
+            await Chapter.update({ reward_badge_id: null }, { where: { reward_badge_id: savedBadge.id } })
+        }
+
+        return savedBadge
     }
 
     async deleteBadge(badgeId: string) {
